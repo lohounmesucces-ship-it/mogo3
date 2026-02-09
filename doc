@@ -1,0 +1,16 @@
+cat > templates/postgresql.json <<'JSON'
+{
+  "name": "[PostgreSQL/##TYPE##] - [##CODEAP##] - Warning - Number of connections is too high for ##INSTANCE##",
+  "description": "Nombre de connexion PostgreSQL > 50",
+  "type": "MANUAL",
+  "enabled": true,
+
+  "severity": 4,
+  "timespan": 300,
+
+  "filter": "ibm_service_instance_name in (\"##INSTANCE##\")",
+  "condition": "max(min(ibm_databases_for_postgresql_total_connections)) > 50",
+
+  "notificationChannelIds": [3136]
+}
+JSON
