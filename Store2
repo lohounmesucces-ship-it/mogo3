@@ -1,0 +1,117 @@
+package tokens
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+type TokenInfo struct {
+	IbmInstanceID string
+	IamToken      string
+
+	// Ordre confirmé :
+	// 0 = Monitor Operations
+	// 1 = BP2I
+	// 2 = DEV
+	// 3 = OPS   <-- DEFAULT
+	// 4 = TMP
+	TeamIDs []string
+}
+
+type Store struct {
+	BaseDir string // ex: /apps/sysdig/data-save/scripts/.token
+}
+
+func NewStore(baseDir string) *Store {
+	return &Store{BaseDir: baseDir}
+}
+
+// Charge : BaseDir/<ibmAccount>/token
+// Format : GUID;TOKEN;team0;team1;team2;team3;team4
+func (s *Store) LoadForAccount(ibmAccount string) (TokenInfo, error) {
+	p := filepath.Join(s.BaseDir, ibmAccount, "token")
+
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return TokenInfo{}, fmt.Errorf("read token file %s: %w", p, err)
+	}
+
+	info := parseSemicolonLine(string(b))
+	if info.IbmInstanceID == "" || info.IamToken == "" || len(info.TeamIDs) == 0 {
+		return TokenInfo{}, fmt.Errorf(
+			"bad token format in %s (expected: GUID;TOKEN;TEAMID...)", p,
+		)
+	}
+
+	// Normalisation du token IAM
+	if !strings.HasPrefix(strings.ToLower(info.IamToken), "bearer ") {
+		info.IamToken = "Bearer " + info.IamToken
+	}
+
+	return info, nil
+}
+
+func parseSemicolonLine(content string) TokenInfo {
+	line := ""
+	for _, l := range strings.Split(content, "\n") {
+		l = strings.TrimSpace(l)
+		if l != "" && !strings.HasPrefix(l, "#") {
+			line = l
+			break
+		}
+	}
+	if line == "" {
+		return TokenInfo{}
+	}
+
+	raw := strings.Split(line, ";")
+	parts := make([]string, 0, len(raw))
+	for _, p := range raw {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	if len(parts) < 3 {
+		return TokenInfo{}
+	}
+
+	return TokenInfo{
+		IbmInstanceID: parts[0],
+		IamToken:      parts[1],
+		TeamIDs:       parts[2:],
+	}
+}
+
+// ------------------------------------------------------------------
+// Team selection logic (NO ENV, OPS DEFAULT)
+// ------------------------------------------------------------------
+
+// TeamIDAuto :
+// - IGNORE totalement instanceOrNamespace et codeAP
+// - retourne TOUJOURS OPS (index 3) si présent
+// - sinon fallback sur defaultIndex (ou 0)
+func (t TokenInfo) TeamIDAuto(_ string, _ string, defaultIndex int) (teamID string, _ string) {
+	const opsIndex = 3
+
+	// 1) OPS par défaut
+	if opsIndex < len(t.TeamIDs) {
+		if id := strings.TrimSpace(t.TeamIDs[opsIndex]); id != "" {
+			return id, ""
+		}
+	}
+
+	// 2) fallback defaultIndex
+	if defaultIndex < 0 || defaultIndex >= len(t.TeamIDs) {
+		defaultIndex = 0
+	}
+	if len(t.TeamIDs) > 0 {
+		if id := strings.TrimSpace(t.TeamIDs[defaultIndex]); id != "" {
+			return id, ""
+		}
+	}
+
+	return "", ""
+}
