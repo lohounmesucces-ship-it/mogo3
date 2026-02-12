@@ -1,0 +1,33 @@
+// internal/templates/renderer.go
+package templates
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+type Renderer struct {
+	Catalog *Catalog
+}
+
+func NewRenderer(c *Catalog) *Renderer {
+	return &Renderer{Catalog: c}
+}
+
+func (r *Renderer) RenderFromFile(app, file string, vars map[string]string) ([]byte, error) {
+	appDir := filepath.Join(r.Catalog.Root, r.Catalog.AppDir(app))
+	p := filepath.Join(appDir, file)
+
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return nil, fmt.Errorf("read template %s: %w", p, err)
+	}
+
+	out := string(b)
+	for k, v := range vars {
+		out = strings.ReplaceAll(out, "##"+k+"##", v)
+	}
+	return []byte(out), nil
+}
