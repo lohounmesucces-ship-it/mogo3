@@ -1,0 +1,181 @@
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"log"
+	"net/http"
+	"strings"
+	"time"
+
+	"alerts-api/internal/sysdig"
+	"alerts-api/internal/templates"
+	"alerts-api/internal/tokens"
+)
+
+type Handler struct {
+	sysdig           *sysdig.Client
+	tokens           *tokens.Store
+	renderer         *templates.Renderer
+	defaultTeamIndex int
+
+	templatesBaseDir string // /apps/sysdig/data-save/www/alerts
+}
+
+func NewHandler(s *sysdig.Client, ts *tokens.Store, r *templates.Renderer, defaultTeamIndex int, templatesBaseDir string) *Handler {
+	return &Handler{
+		sysdig:           s,
+		tokens:           ts,
+		renderer:         r,
+		defaultTeamIndex: defaultTeamIndex,
+		templatesBaseDir: templatesBaseDir,
+	}
+}
+
+type CreateRequest struct {
+	IbmAccount          string   `json:"ibmAccount"`
+	Application         string   `json:"application"`
+	InstanceOrNamespace string   `json:"instanceOrNamespace"`
+	CodeAP              string   `json:"codeAP"`
+
+	// NOUVEAU: liste exacte des fichiers .json à créer (dans BaseDir/<app>/)
+	Alerts []string `json:"alerts"`
+
+	// Optionnel: si tes templates utilisent ##VALUE## / ##SEVERITY##
+	Value    string `json:"value,omitempty"`
+	Severity string `json:"severity,omitempty"`
+}
+
+type CreateResult struct {
+	File   string         `json:"file"`
+	OK     bool           `json:"ok"`
+	Error  string         `json:"error,omitempty"`
+	Output map[string]any `json:"output,omitempty"`
+}
+
+func (h *Handler) CreateStandardAlert(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req CreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	req.IbmAccount = strings.TrimSpace(req.IbmAccount)
+	req.Application = strings.TrimSpace(req.Application)
+	req.InstanceOrNamespace = strings.TrimSpace(req.InstanceOrNamespace)
+	req.CodeAP = strings.TrimSpace(req.CodeAP)
+
+	if req.IbmAccount == "" || req.Application == "" || req.InstanceOrNamespace == "" || req.CodeAP == "" {
+		http.Error(w, "missing fields: ibmAccount, application, instanceOrNamespace, codeAP", http.StatusBadRequest)
+		return
+	}
+	if len(req.Alerts) == 0 {
+		http.Error(w, "missing field: alerts (list of template json filenames)", http.StatusBadRequest)
+		return
+	}
+
+	// 1) load token
+	tok, err := h.tokens.LoadForAccount(req.IbmAccount)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// 2) choose team (par défaut = OPS via index)
+	if len(tok.TeamIDs) == 0 {
+		http.Error(w, "no teamID available in token file", http.StatusBadRequest)
+		return
+	}
+	idx := h.defaultTeamIndex
+	if idx < 0 || idx >= len(tok.TeamIDs) {
+		idx = 0
+	}
+	teamID := tok.TeamIDs[idx]
+
+	// 3) vars (placeholders)
+	vars := map[string]string{
+		"IBM_ACCOUNT": req.IbmAccount,
+		"APP":         req.Application,
+		"INSTANCE":    req.InstanceOrNamespace,
+		"CODEAP":      req.CodeAP,
+		"CODE_AP":     req.CodeAP,
+		"TYPE":        req.Application,
+
+		// optionnels
+		"VALUE":    req.Value,
+		"SEVERITY": req.Severity,
+	}
+
+	// 4) create each requested alert
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	results := make([]CreateResult, 0, len(req.Alerts))
+
+	for _, file := range req.Alerts {
+		file = strings.TrimSpace(file)
+		if file == "" {
+			continue
+		}
+
+		alertBody, err := h.renderer.RenderFromFile(req.Application, file, vars)
+		if err != nil {
+			results = append(results, CreateResult{File: file, OK: false, Error: err.Error()})
+			continue
+		}
+
+		log.Printf("ALERT_TEMPLATE=%s ALERT_BODY=%s", file, string(alertBody))
+
+		out, err := h.sysdig.CreateAlert(ctx, tok.IbmInstanceID, teamID, tok.IamToken, alertBody)
+		if err != nil {
+			results = append(results, CreateResult{File: file, OK: false, Error: err.Error()})
+			continue
+		}
+
+		results = append(results, CreateResult{File: file, OK: true, Output: out})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status":      "done",
+		"ibmAccount":   req.IbmAccount,
+		"application":  req.Application,
+		"instance":     req.InstanceOrNamespace,
+		"codeAP":       req.CodeAP,
+		"teamIDUsed":   teamID,
+		"results":      results,
+	})
+}
+
+// GET /v1/alerts/catalog?application=PostgreSql
+func (h *Handler) GetCatalog(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	app := strings.TrimSpace(r.URL.Query().Get("application"))
+	if app == "" {
+		http.Error(w, "missing query param: application", http.StatusBadRequest)
+		return
+	}
+
+	cat := templates.NewCatalog(h.templatesBaseDir)
+	defs, err := cat.LoadAlertDefs(app)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"application": app,
+		"count":       len(defs),
+		"alerts":      defs,
+	})
+}
