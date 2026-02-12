@@ -1,0 +1,65 @@
+package main
+
+import (
+	"log"
+	"net/http"
+	"os"
+	"strconv"
+
+	"alerts-api/internal/httpapi"
+	"alerts-api/internal/sysdig"
+	"alerts-api/internal/templates"
+	"alerts-api/internal/tokens"
+)
+
+func getenv(key, def string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	return v
+}
+
+func main() {
+	port := getenv("PORT", "8080")
+
+	// ton endpoint interne
+	sysdigEndpoint := getenv("SYSDIG_ENDPOINT", "https://monitor-admin-global.svc.paas.echonet:4219")
+
+	// tokens
+	tokenDir := getenv("TOKEN_DIR", "/apps/sysdig/data-save/scripts/.token")
+
+	// templates standards
+	templatesBaseDir := getenv("TEMPLATES_BASE_DIR", "/apps/sysdig/data-save/www/alerts")
+
+	// D’après toi: TeamIDs ordre = Monitor operations, bp2i, dev, ops, tmp
+	// => OPS = index 3
+	defaultTeamIndex := 3
+	if v := os.Getenv("DEFAULT_TEAM_INDEX"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			defaultTeamIndex = n
+		}
+	}
+
+	log.Printf("SDC_URL=%s", sysdigEndpoint)
+	log.Printf("listening on :%s", port)
+
+	sdc := sysdig.New(sysdigEndpoint)
+	store := tokens.NewStore(tokenDir)
+	renderer := templates.NewRenderer(templatesBaseDir)
+
+	h := httpapi.NewHandler(sdc, store, renderer, defaultTeamIndex, templatesBaseDir)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/alerts/standard", h.CreateStandardAlert)
+	mux.HandleFunc("/v1/alerts/catalog", h.GetCatalog)
+
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	if err := http.ListenAndServe(":"+port, mux); err != nil {
+		log.Fatalf("server error: %v", err)
+	}
+}
