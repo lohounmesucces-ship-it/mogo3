@@ -1,0 +1,83 @@
+package templates
+
+import (
+	"encoding/csv"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+type Catalog struct {
+	Root string
+}
+
+type AlertDef struct {
+	File     string
+	Severity string
+}
+
+func NewCatalog(root string) *Catalog {
+	return &Catalog{Root: root}
+}
+
+func (c *Catalog) AppDir(app string) string {
+	switch strings.ToLower(strings.TrimSpace(app)) {
+	case "postgresql", "postgres":
+		return "PostgreSql"
+	case "kubernetes", "k8s":
+		return "Kubernetes"
+	default:
+		return strings.TrimSpace(app)
+	}
+}
+
+func (c *Catalog) LoadAlertDefs(app string) ([]AlertDef, error) {
+
+	appDir := filepath.Join(c.Root, c.AppDir(app))
+	csvPath := filepath.Join(appDir, "alerts.csv")
+
+	f, err := os.Open(csvPath)
+	if err != nil {
+		return nil, fmt.Errorf("open alerts.csv %s: %w", csvPath, err)
+	}
+	defer f.Close()
+
+	r := csv.NewReader(f)
+	r.Comma = ';' // ⭐ IMPORTANT : ton CSV utilise ;
+
+	rows, err := r.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("read csv %s: %w", csvPath, err)
+	}
+
+	defs := []AlertDef{}
+
+	for _, row := range rows {
+
+		if len(row) < 1 {
+			continue
+		}
+
+		file := strings.TrimSpace(row[0])
+		if file == "" {
+			continue
+		}
+
+		severity := ""
+		if len(row) >= 2 {
+			severity = strings.TrimSpace(row[1])
+		}
+
+		defs = append(defs, AlertDef{
+			File:     file,
+			Severity: severity,
+		})
+	}
+
+	if len(defs) == 0 {
+		return nil, fmt.Errorf("aucune alerte trouvée dans %s", csvPath)
+	}
+
+	return defs, nil
+}
