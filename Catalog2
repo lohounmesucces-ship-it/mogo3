@@ -1,0 +1,96 @@
+package templates
+
+import (
+	"encoding/csv"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// AlertDef représente une ligne du alerts.csv
+// Format CSV attendu (sans header) :
+// alert_connection1.json;Warning;Description...
+type AlertDef struct {
+	File     string `json:"file"`
+	Severity string `json:"severity,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Value    string `json:"value,omitempty"`
+}
+
+type Catalog struct {
+	BaseDir string // ex: /apps/sysdig/data-save/www/alerts
+}
+
+func NewCatalog(baseDir string) *Catalog {
+	return &Catalog{BaseDir: baseDir}
+}
+
+// Charge les alertes depuis : BaseDir/<Application>/alerts.csv
+func (c *Catalog) LoadAlertDefs(application string) ([]AlertDef, error) {
+
+	app := strings.TrimSpace(application)
+	if app == "" {
+		return nil, fmt.Errorf("application is empty")
+	}
+
+	appDir := filepath.Join(c.BaseDir, app)
+	csvPath := filepath.Join(appDir, "alerts.csv")
+
+	b, err := os.ReadFile(csvPath)
+	if err != nil {
+		return nil, fmt.Errorf("read alerts.csv %s: %w", csvPath, err)
+	}
+
+	// ⭐ IMPORTANT : ton CSV utilise ;
+	r := csv.NewReader(strings.NewReader(string(b)))
+	r.Comma = ';'
+	r.TrimLeadingSpace = true
+	r.FieldsPerRecord = -1
+
+	rows, err := r.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("parse alerts.csv %s: %w", csvPath, err)
+	}
+
+	out := make([]AlertDef, 0, len(rows))
+
+	for _, row := range rows {
+
+		if len(row) == 0 {
+			continue
+		}
+
+		file := strings.TrimSpace(row[0])
+		if file == "" {
+			continue
+		}
+
+		def := AlertDef{
+			File: filepath.Base(file),
+		}
+
+		// Colonne 1 = severity (chez toi Warning / Critical)
+		if len(row) > 1 {
+			def.Severity = strings.TrimSpace(row[1])
+		}
+
+		// Colonne 2 = description / title (optionnel)
+		if len(row) > 2 {
+			def.Title = strings.TrimSpace(row[2])
+		}
+
+		// Colonne 3 = value (si jamais présent)
+		if len(row) > 3 {
+			def.Value = strings.TrimSpace(row[3])
+		}
+
+		out = append(out, def)
+	}
+
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no alerts found in %s", csvPath)
+	}
+
+	return out, nil
+}
