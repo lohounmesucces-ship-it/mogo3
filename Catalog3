@@ -1,0 +1,122 @@
+package templates
+
+import (
+	"encoding/csv"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+type AlertDef struct {
+	File     string `json:"file"`
+	Severity string `json:"severity,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Value    string `json:"value,omitempty"`
+}
+
+type Catalog struct {
+	BaseDir string // ex: /apps/sysdig/data-save/www/alerts
+}
+
+func NewCatalog(baseDir string) *Catalog {
+	return &Catalog{BaseDir: baseDir}
+}
+
+// 🔥 Mapping OFFICIEL de ton repo /alerts
+func normalizeAppDir(app string) string {
+
+	switch strings.ToLower(strings.TrimSpace(app)) {
+
+	// -------- Databases --------
+	case "postgresql", "postgres", "postgresql-db":
+		return "PostgreSQL"
+
+	case "redis":
+		return "Redis"
+
+	case "mongodb", "mongo":
+		return "MongoDB"
+
+	case "elasticsearch", "es":
+		return "Elasticsearch"
+
+	case "entreprisedb", "edb":
+		return "EntrepriseDB"
+
+	// -------- Event Streams --------
+	case "eventstreams-topic", "eventstream-topic", "eventstreams_topic":
+		return "EventStreams-Topic"
+
+	case "eventstreams-consumergroup", "eventstream-consumergroup", "eventstreams_consumergroup":
+		return "EventStreams-ConsumerGroup"
+
+	// -------- Kubernetes --------
+	case "kubernetes", "k8s":
+		return "Kubernetes"
+
+	default:
+		// fallback : si déjà bon nom dossier
+		return strings.TrimSpace(app)
+	}
+}
+
+func (c *Catalog) LoadAlertDefs(application string) ([]AlertDef, error) {
+
+	appDir := filepath.Join(c.BaseDir, normalizeAppDir(application))
+	csvPath := filepath.Join(appDir, "alerts.csv")
+
+	b, err := os.ReadFile(csvPath)
+	if err != nil {
+		return nil, fmt.Errorf("read alerts.csv %s: %w", csvPath, err)
+	}
+
+	// ⭐ ton CSV utilise ;
+	r := csv.NewReader(strings.NewReader(string(b)))
+	r.Comma = ';'
+	r.TrimLeadingSpace = true
+	r.FieldsPerRecord = -1
+
+	rows, err := r.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("parse alerts.csv %s: %w", csvPath, err)
+	}
+
+	out := []AlertDef{}
+
+	for _, row := range rows {
+
+		if len(row) == 0 {
+			continue
+		}
+
+		file := strings.TrimSpace(row[0])
+		if file == "" || strings.HasPrefix(file, "#") {
+			continue
+		}
+
+		def := AlertDef{
+			File: filepath.Base(file),
+		}
+
+		if len(row) > 1 {
+			def.Severity = strings.TrimSpace(row[1])
+		}
+
+		if len(row) > 2 {
+			def.Title = strings.TrimSpace(row[2])
+		}
+
+		if len(row) > 3 {
+			def.Value = strings.TrimSpace(row[3])
+		}
+
+		out = append(out, def)
+	}
+
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no alerts found in %s", csvPath)
+	}
+
+	return out, nil
+}
