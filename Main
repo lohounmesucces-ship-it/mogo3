@@ -1,0 +1,60 @@
+// cmd/server/main.go (extrait minimal routing + init)
+package main
+
+import (
+	"log"
+	"net/http"
+	"os"
+	"strconv"
+
+	"alerts-api/internal/httpapi"
+	"alerts-api/internal/sysdig"
+	"alerts-api/internal/templates"
+	"alerts-api/internal/tokens"
+)
+
+func main() {
+	// Tokens directory
+	tokenDir := os.Getenv("TOKENS_DIR")
+	if tokenDir == "" {
+		tokenDir = "/apps/sysdig/data-save/scripts/.token"
+	}
+
+	// Alerts templates root directory (your catalog)
+	alertsRoot := os.Getenv("ALERTS_ROOT")
+	if alertsRoot == "" {
+		alertsRoot = "/apps/sysdig/data-save/www/alerts"
+	}
+
+	// Sysdig endpoint
+	sdcURL := os.Getenv("SDC_URL")
+	if sdcURL == "" {
+		log.Fatal("missing SDC_URL")
+	}
+
+	defaultTeamIndex := 0
+	if v := os.Getenv("DEFAULT_TEAM_INDEX"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			defaultTeamIndex = n
+		}
+	}
+
+	tokStore := tokens.NewStore(tokenDir)
+	sd := sysdig.NewClient(sdcURL)
+
+	catalog := templates.NewCatalog(alertsRoot)
+	renderer := templates.NewRenderer(catalog)
+
+	h := httpapi.NewHandler(tokStore, sd, catalog, renderer, defaultTeamIndex)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", h.Health)
+
+	// NEW
+	mux.HandleFunc("/v1/alerts/catalog", h.ListCatalog)
+	mux.HandleFunc("/v1/alerts/standard", h.CreateStandardAlert)
+
+	addr := ":8080"
+	log.Printf("listening on %s", addr)
+	log.Fatal(http.ListenAndServe(addr, mux))
+}
