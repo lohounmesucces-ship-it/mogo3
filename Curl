@@ -1,0 +1,3 @@
+curl -v -X POST http://127.0.0.1:8080/v1/alerts/standard \
+-H "Content-Type: application/json" \
+-d '{"ibmAccount":"2321944","application":"PostgreSql","instanceOrNamespace":"pg0021006684","codeAP":"AP25242","alerts":["alert_connection1.json"]}'
