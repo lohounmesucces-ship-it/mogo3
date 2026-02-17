@@ -1,0 +1,11 @@
+alertBody, err := h.renderer.RenderFromFile(req.Application, file, vars)
+if err != nil {
+	// gestion erreur
+}
+
+alertBody, err = sysdig.NettoyerPayloadAlertePourCreation(alertBody)
+if err != nil {
+	// gestion erreur
+}
+
+out, err := h.sysdig.CreateAlert(ctx, tok.IbmInstanceID, teamID, tok.IamToken, alertBody)
