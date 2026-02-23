@@ -1,0 +1,36 @@
+func normaliserEmailRecipients(alert map[string]any) {
+	ds, ok := alert["defaultSettings"].(map[string]any)
+	if !ok {
+		return
+	}
+
+	v, ok := ds["emailRecipients"]
+	if !ok || v == nil {
+		return
+	}
+
+	// Déjà un tableau -> OK
+	if _, ok := v.([]any); ok {
+		return
+	}
+
+	// Si c'est un objet -> transformer en liste
+	if obj, ok := v.(map[string]any); ok {
+		emails := make([]string, 0, len(obj))
+		for k := range obj {
+			// cas fréquent: {"a@b.com": true} -> on prend la clé
+			emails = append(emails, k)
+		}
+		sort.Strings(emails)
+		out := make([]any, 0, len(emails))
+		for _, e := range emails {
+			out = append(out, e)
+		}
+		ds["emailRecipients"] = out
+		return
+	}
+
+	// Si c'est une string -> tableau de 1
+	if s, ok := v.(string); ok {
+		ds["emailRecipients"] = []any{s}
+		return
