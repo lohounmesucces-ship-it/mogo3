@@ -1,0 +1,130 @@
+package sysdig
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+)
+
+func NettoyerPayloadAlertePourCreation(in []byte) ([]byte, error) {
+	in = bytes.TrimSpace(in)
+	if len(in) == 0 {
+		return nil, fmt.Errorf("payload alerte vide")
+	}
+
+	var obj any
+	if err := json.Unmarshal(in, &obj); err != nil {
+		return nil, fmt.Errorf("json invalide: %w", err)
+	}
+
+	root, ok := obj.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("payload invalide: objet JSON attendu")
+	}
+
+	// Supporte 2 formats :
+	// 1) {"alert": {...}}
+	// 2) {...} (payload direct)
+	alertObj := root
+	if v, exists := root["alert"]; exists {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf(`champ "alert" invalide: objet attendu`)
+		}
+		alertObj = m
+	}
+
+	// 1) Supprimer les champs interdits à la création
+	supprimerChampsInterdits(alertObj)
+	supprimerChampsInterdits(root) // au cas où certains sont au niveau racine
+
+	// 2) Normaliser defaultSettings : si [ {...} ] -> {...}
+	normaliserDefaultSettings(alertObj)
+
+	// 3) Normaliser notificationChannelIds : {3136} / 3136 -> [3136]
+	normaliserNotificationChannelIds(alertObj)
+
+	// 4) Re-emballer si format {"alert": {...}}
+	if _, hadWrapper := root["alert"]; hadWrapper {
+		root["alert"] = alertObj
+		return json.MarshalIndent(root, "", "  ")
+	}
+
+	return json.MarshalIndent(alertObj, "", "  ")
+}
+
+func supprimerChampsInterdits(m map[string]any) {
+	champs := []string{
+		"id",
+		"version",
+		"createdOn",
+		"modifiedOn",
+		"customerId",
+		"lastCheckTimeInMs",
+		"valid",
+		"links",
+		"invalidMetrics",
+		"groupName",
+	}
+	for _, k := range champs {
+		delete(m, k)
+	}
+}
+
+func normaliserDefaultSettings(alert map[string]any) {
+	v, ok := alert["defaultSettings"]
+	if !ok || v == nil {
+		return
+	}
+
+	// Si c'est déjà un objet -> OK
+	if _, ok := v.(map[string]any); ok {
+		return
+	}
+
+	// Si c'est un tableau -> prendre le 1er élément si unique
+	if arr, ok := v.([]any); ok {
+		if len(arr) == 1 {
+			if obj, ok := arr[0].(map[string]any); ok {
+				alert["defaultSettings"] = obj
+				return
+			}
+		}
+		// Sinon on laisse (mais c’est généralement invalide pour /api/alerts)
+		return
+	}
+}
+
+func normaliserNotificationChannelIds(alert map[string]any) {
+	v, ok := alert["notificationChannelIds"]
+	if !ok || v == nil {
+		return
+	}
+
+	// Déjà un tableau -> OK
+	if _, ok := v.([]any); ok {
+		return
+	}
+
+	// Si c'est un nombre -> le mettre dans un tableau
+	if f, ok := v.(float64); ok {
+		alert["notificationChannelIds"] = []any{int(f)}
+		return
+	}
+
+	// Si c'est un objet -> essayer d'en extraire des nombres (cas bizarre {3136})
+	if obj, ok := v.(map[string]any); ok {
+		ids := make([]any, 0, len(obj))
+		for k := range obj {
+			// k peut être "3136" si le JSON d'origine était bancal
+			var n int
+			if _, err := fmt.Sscanf(k, "%d", &n); err == nil {
+				ids = append(ids, n)
+			}
+		}
+		if len(ids) > 0 {
+			alert["notificationChannelIds"] = ids
+		}
+		return
+	}
+}
