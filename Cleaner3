@@ -1,0 +1,58 @@
+// internal/sysdig/cleaner.go
+package sysdig
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+)
+
+// NettoyerPayloadAlertePourCreation
+// - prend le JSON final (après remplacement des ##VAR##)
+// - vérifie que c'est du JSON valide
+// - supprime uniquement les champs interdits DANS l'objet "alert"
+// - retourne un JSON propre prêt pour POST /api/alerts
+func NettoyerPayloadAlertePourCreation(in []byte) ([]byte, error) {
+	in = bytes.TrimSpace(in)
+	if len(in) == 0 {
+		return nil, fmt.Errorf("payload alerte vide")
+	}
+
+	var root any
+	if err := json.Unmarshal(in, &root); err != nil {
+		return nil, fmt.Errorf("json invalide: %w", err)
+	}
+
+	m, ok := root.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("payload invalide: objet JSON attendu")
+	}
+
+	// Cas standard: {"alert":{...}}
+	if a, ok := m["alert"].(map[string]any); ok {
+		nettoyerChampsInterditsDansAlert(a) // ✅ on nettoie SEULEMENT alert
+		return json.MarshalIndent(m, "", "  ")
+	}
+
+	// Cas payload direct: {...} (si jamais tu en as)
+	nettoyerChampsInterditsDansAlert(m)
+	return json.MarshalIndent(m, "", "  ")
+}
+
+// Supprime les champs que l'API Sysdig refuse lors d'un POST de création.
+// ⚠️ Ne PAS nettoyer la racine si elle contient le wrapper "alert".
+func nettoyerChampsInterditsDansAlert(alert map[string]any) {
+	champsInterdits := []string{
+		"id",
+		"version",
+		"createdOn",
+		"modifiedOn",
+		"customerId",
+		"lastCheckTimeInMs",
+		"valid",
+	}
+
+	for _, k := range champsInterdits {
+		delete(alert, k)
+	}
+}
