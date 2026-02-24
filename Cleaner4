@@ -1,0 +1,36 @@
+func NettoyerPayloadAlertePourCreation(in []byte) ([]byte, error) {
+
+	in = bytes.TrimSpace(in)
+
+	var obj any
+	if err := json.Unmarshal(in, &obj); err != nil {
+		return nil, fmt.Errorf("json invalide: %w", err)
+	}
+
+	// si wrapper {"alert": {...}} → on récupère seulement l'objet interne
+	if m, ok := obj.(map[string]any); ok {
+		if alert, ok := m["alert"].(map[string]any); ok {
+			obj = alert
+		}
+	}
+
+	// suppression champs interdits
+	if m, ok := obj.(map[string]any); ok {
+
+		champsInterdits := []string{
+			"id",
+			"version",
+			"createdOn",
+			"modifiedOn",
+			"customerId",
+			"lastCheckTimeInMs",
+			"notificationCount",
+		}
+
+		for _, k := range champsInterdits {
+			delete(m, k)
+		}
+	}
+
+	return json.MarshalIndent(obj, "", "  ")
+}
