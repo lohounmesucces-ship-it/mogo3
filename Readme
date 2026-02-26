@@ -1,0 +1,71 @@
+OK. Voilà à quoi sert chaque “gros” fichier/dossier typique de ton projet alerts-api (d’après ce que tu m’as montré : cmd/, internal/httpapi/handlers.go, internal/sysdig/*, www/alerts/*, config/, etc.).
+
+1) cmd/server/
+	•	cmd/server/main.go
+	•	Point d’entrée de l’appli.
+	•	Lit la config (URL Sysdig, ports, chemins), initialise les composants (client Sysdig, renderer, handlers HTTP), puis démarre le serveur (ex: :8080).
+	•	C’est lui qui “branche” tout.
+
+2) internal/httpapi/
+	•	internal/httpapi/handlers.go
+	•	Contient les endpoints HTTP (ex: POST /v1/alerts/standard, GET /v1/alerts/catalog?...).
+	•	Parse le JSON d’entrée du client (ibmAccount, instanceOrNamespace, codeAP, alerts…).
+	•	Construit vars (les variables de remplacement ##INSTANCE##, ##CODEAP##, ##TIMESPAN##, etc.).
+	•	Pour chaque fichier d’alerte demandé :
+	1.	RenderFromFile(...) → génère le JSON final à partir du template
+	2.	NettoyerPayloadAlertePourCreation(...) → enlève/normalise ce que l’API Sysdig refuse
+	3.	CreateAlert(...) → appelle l’API Sysdig /api/alerts
+	•	Construit la réponse HTTP vers ton client (results, teamIDUsed, etc.).
+
+3) internal/renderer/ (ou internal/loader/ selon ton code)
+	•	Renderer / Template engine
+	•	Charge un fichier JSON template depuis www/alerts/<Application>/...json
+	•	Remplace les placeholders ##VAR## par les valeurs calculées dans vars
+	•	Retourne un []byte (le JSON final prêt à envoyer).
+
+(Si tu as internal/loader/templates.go : c’est souvent là que sont gérés les tokens ##...##, et la logique “remplacer dans le texte”.)
+
+4) internal/sysdig/
+	•	internal/sysdig/client.go (ou fichier équivalent où tu as func (c *Client) CreateAlert(...))
+	•	C’est le client HTTP Sysdig.
+	•	Construit la requête POST {Endpoint}/api/alerts
+	•	Ajoute les headers :
+	•	Authorization (token)
+	•	IBMInstanceID
+	•	SysdigTeamID
+	•	Content-Type: application/json
+	•	Lit la réponse, et si >=300 renvoie une erreur sysdig create alert failed: ....
+	•	internal/sysdig/cleaner.go
+	•	Prend le JSON final (après rendu du template).
+	•	Vérifie que c’est du JSON valide.
+	•	Supprime / normalise les champs qui cassent la création (ex: id, version, createdOn, modifiedOn, customerId, lastCheckTimeInMs, parfois teamId selon API).
+	•	Objectif : produire le payload minimal acceptable par /api/alerts.
+	•	(si tu as d’autres fichiers dans internal/sysdig/ : ex auth.go, teams.go, etc.)
+	•	auth.go : récup/token IAM, lecture token local, etc.
+	•	teams.go : résolution teamID à partir d’account, mapping, etc.
+
+5) www/alerts/
+	•	www/alerts/<Application>/*.json
+	•	Tes templates d’alertes.
+	•	Ils contiennent des placeholders ##INSTANCE##, ##CODEAP##, ##TIMESPAN##, ##VALUE##, ##SEVERITY##, etc.
+	•	C’est ce que RenderFromFile() lit.
+
+6) config/
+	•	Fichiers de configuration (selon ton projet) :
+	•	URL Sysdig (endpoint)
+	•	Port du serveur
+	•	Chemins vers www/alerts
+	•	Parfois proxy, timeouts, etc.
+
+7) Racine projet
+	•	go.mod / go.sum : dépendances Go.
+	•	alerts-api (binaire) : le résultat de go build -o alerts-api.
+	•	scripts/ (si présent) : helpers bash/curl de test.
+
+⸻
+
+Le flux complet en 1 phrase
+
+handlers.go reçoit la requête → construit vars → RenderFromFile() produit un JSON → cleaner.go le rend “créable” → client.go(CreateAlert) l’envoie à Sysdig.
+
+Si tu veux, envoie juste le ls -R (ou une photo du tree tree -L 3) de ton projet, et je te fais la même liste 100% exacte avec les noms réels de TES fichiers.
