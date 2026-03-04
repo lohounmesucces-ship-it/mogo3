@@ -1,0 +1,251 @@
+// internal/httpapi/handlers.go
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"alerts-api/internal/sysdig"
+	"alerts-api/internal/templates"
+	"alerts-api/internal/tokens"
+)
+
+type Handler struct {
+	sysdig   *sysdig.Client
+	tokens   *tokens.Store
+	renderer *templates.Renderer
+
+	templatesBaseDir string // /apps/sysdig/data-save/www/alerts
+}
+
+func NewHandler(s *sysdig.Client, ts *tokens.Store, r *templates.Renderer, templatesBaseDir string) *Handler {
+	return &Handler{
+		sysdig:            s,
+		tokens:            ts,
+		renderer:          r,
+		templatesBaseDir:  templatesBaseDir,
+	}
+}
+
+type CreateRequest struct {
+	IbmAccount           string   `json:"ibmAccount"`
+	Application          string   `json:"application"`
+	InstanceOrNamespace  string   `json:"instanceOrNamespace"`
+	CodeAP               string   `json:"codeAP"`
+	TeamID               string   `json:"teamId"`
+
+	// liste des fichiers .json à créer (dans templatesBaseDir/<application>/...)
+	Alerts []string `json:"alerts"`
+
+	// Optionnels (templates utilisent ##VALUE## / ##SEVERITY##)
+	Value    string `json:"value,omitempty"`
+	Severity string `json:"severity,omitempty"` // LOW|INFO|MEDIUM|HIGH
+
+	// Optionnel: injection notificationChannelIds via lookup Sysdig
+	NotificationName string `json:"notificationName,omitempty"`
+}
+
+type CreateResult struct {
+	File   string         `json:"file"`
+	OK     bool           `json:"ok"`
+	Error  string         `json:"error,omitempty"`
+	Output map[string]any `json:"output,omitempty"`
+}
+
+func (h *Handler) CreateStandardAlert(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, _ := io.ReadAll(r.Body)
+	log.Printf("RAW_BODY=%s", string(body))
+
+	var req CreateRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	req.IbmAccount = strings.TrimSpace(req.IbmAccount)
+	req.Application = strings.TrimSpace(req.Application)
+	req.InstanceOrNamespace = strings.TrimSpace(req.InstanceOrNamespace)
+	req.CodeAP = strings.TrimSpace(req.CodeAP)
+	req.TeamID = strings.TrimSpace(req.TeamID)
+	req.Value = strings.TrimSpace(req.Value)
+	req.Severity = strings.TrimSpace(req.Severity)
+	req.NotificationName = strings.TrimSpace(req.NotificationName)
+
+	if req.TeamID == "" {
+		http.Error(w, "missing field: teamId", http.StatusBadRequest)
+		return
+	}
+
+	if req.IbmAccount == "" || req.Application == "" || req.InstanceOrNamespace == "" || req.CodeAP == "" {
+		http.Error(w, "missing fields: ibmAccount, application, instanceOrNamespace, codeAP", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.Alerts) == 0 {
+		http.Error(w, "missing field: alerts (list of template json filenames)", http.StatusBadRequest)
+		return
+	}
+
+	// 1) load token
+	tok, err := h.tokens.LoadForAccount(req.IbmAccount)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	teamID := req.TeamID
+
+	// 2) placeholders
+	severityLabel := mapSeverity(req.Severity)
+
+	vars := map[string]string{
+		"IBM_ACCOUNT": req.IbmAccount,
+		"APP":         req.Application,
+		"INSTANCE":    req.InstanceOrNamespace,
+		"CODEAP":      req.CodeAP,
+
+		// defaults (si templates utilisent ça)
+		"TIMESPAN": "300",
+		"VALUE":    "80",
+
+		// IMPORTANT: on remplace ##SEVERITY## par le label
+		"SEVERITY": severityLabel,
+
+		"CODE_AP": req.CodeAP,
+		"TYPE":    req.Application,
+	}
+
+	// optionnels (si fournis)
+	if req.Value != "" {
+		vars["VALUE"] = req.Value
+	}
+	if req.Severity != "" {
+		vars["SEVERITY"] = severityLabel
+	}
+
+	// 3) optional: resolve NOTIF_ID (notification channel id)
+	var notifIDs []int
+	if req.NotificationName != "" {
+		id, err := h.sysdig.GetNotificationChannelID(r.Context(), tok.IbmInstanceID, teamID, tok.IamToken, req.NotificationName)
+		if err != nil {
+			http.Error(w, "notification lookup failed: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		notifIDs = []int{id}
+	}
+
+	// 4) create each requested alert
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	results := make([]CreateResult, 0, len(req.Alerts))
+
+	for _, file := range req.Alerts {
+		file = strings.TrimSpace(file)
+		if file == "" {
+			continue
+		}
+
+		alertBody, err := h.renderer.RenderFromFile(req.Application, file, vars)
+		if err != nil {
+			results = append(results, CreateResult{File: file, OK: false, Error: err.Error()})
+			continue
+		}
+
+		log.Printf("FILE=%s LEN=%d", file, len(alertBody))
+		log.Printf("ALERT_TEMPLATE=%s ALERT_BODY=%s", file, string(alertBody))
+
+		// clean forbidden fields (id/version/createdOn/modifiedOn/customerId/lastCheckTimeInMs/notificationCount/severity)
+		alertBody, err = sysdig.NettoyerPayloadAlertePourCreation(alertBody)
+		if err != nil {
+			results = append(results, CreateResult{File: file, OK: false, Error: err.Error()})
+			continue
+		}
+
+		// inject notificationChannelIds if requested
+		if len(notifIDs) > 0 {
+			alertBody, err = sysdig.InjectNotificationChannelIDs(alertBody, notifIDs)
+			if err != nil {
+				results = append(results, CreateResult{File: file, OK: false, Error: err.Error()})
+				continue
+			}
+		}
+
+		log.Printf("AFTER_CLEAN=%s", string(alertBody))
+		_ = os.WriteFile("/tmp/sysdig_alert_payload.json", alertBody, 0644)
+
+		out, err := h.sysdig.CreateAlert(ctx, tok.IbmInstanceID, teamID, tok.IamToken, alertBody)
+		if err != nil {
+			results = append(results, CreateResult{File: file, OK: false, Error: err.Error()})
+			continue
+		}
+
+		results = append(results, CreateResult{File: file, OK: true, Output: out})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status":              "done",
+		"ibmAccount":           req.IbmAccount,
+		"application":          req.Application,
+		"instance":             req.InstanceOrNamespace,
+		"codeAP":               req.CodeAP,
+		"teamIDUsed":           teamID,
+		"notificationNameUsed": req.NotificationName,
+		"results":              results,
+	})
+}
+
+func mapSeverity(s string) string {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case "LOW":
+		return "LOW"
+	case "INFO":
+		return "INFO"
+	case "MEDIUM":
+		return "MEDIUM"
+	case "HIGH":
+		return "HIGH"
+	default:
+		return "MEDIUM"
+	}
+}
+
+// GET /v1/alerts/catalog?application=PostgreSQL
+func (h *Handler) GetCatalog(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	app := strings.TrimSpace(r.URL.Query().Get("application"))
+	if app == "" {
+		http.Error(w, "missing query param: application", http.StatusBadRequest)
+		return
+	}
+
+	cat := templates.NewCatalog(h.templatesBaseDir)
+	defs, err := cat.LoadAlertDefs(app)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"application": app,
+		"count":       len(defs),
+		"alerts":      defs,
+	})
+}
