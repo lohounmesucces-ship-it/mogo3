@@ -1,0 +1,74 @@
+// internal/sysdig/cleaner.go
+package sysdig
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+)
+
+// NettoyerPayloadAlertePourCreation
+// - supprime uniquement les champs interdits DANS l'objet "alert"
+// - retourne un JSON propre prêt pour POST /api/alerts
+func NettoyerPayloadAlertePourCreation(in []byte) ([]byte, error) {
+	in = bytes.TrimSpace(in)
+
+	var obj any
+	if err := json.Unmarshal(in, &obj); err != nil {
+		return nil, fmt.Errorf("json invalide: %w", err)
+	}
+
+	// si wrapper {"alert": {...}} => on travaille sur l'objet alert
+	if m, ok := obj.(map[string]any); ok {
+		if alert, ok := m["alert"].(map[string]any); ok {
+			obj = alert
+		}
+	}
+
+	// suppression champs interdits dans l'objet alert
+	if m, ok := obj.(map[string]any); ok {
+		champsInterdits := []string{
+			"id",
+			"version",
+			"createdOn",
+			"modifiedOn",
+			"customerId",
+			"lastCheckTimeInMs",
+			"notificationCount",
+			"severity", // IMPORTANT: on ne veut plus "severity": 4
+		}
+		for _, k := range champsInterdits {
+			delete(m, k)
+		}
+	}
+
+	return json.MarshalIndent(obj, "", "  ")
+}
+
+// InjectNotificationChannelIDs
+// Ajoute ou remplace notificationChannelIds dans l'objet alert (root).
+func InjectNotificationChannelIDs(in []byte, ids []int) ([]byte, error) {
+	in = bytes.TrimSpace(in)
+
+	var obj any
+	if err := json.Unmarshal(in, &obj); err != nil {
+		return nil, fmt.Errorf("json invalide: %w", err)
+	}
+
+	// si wrapper {"alert": {...}} => on travaille sur l'objet alert
+	if m, ok := obj.(map[string]any); ok {
+		if alert, ok := m["alert"].(map[string]any); ok {
+			obj = alert
+		}
+	}
+
+	m, ok := obj.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("payload alert inattendu (pas un objet JSON)")
+	}
+
+	// set/replace
+	m["notificationChannelIds"] = ids
+
+	return json.MarshalIndent(m, "", "  ")
+}
