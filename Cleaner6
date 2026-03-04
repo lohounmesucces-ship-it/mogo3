@@ -1,0 +1,216 @@
+// internal/sysdig/cleaner.go
+package sysdig
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+)
+
+// marshalJSON : JSON sans escape HTML (donc conserve ">" au lieu de "\u003e")
+func marshalJSON(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSpace(buf.Bytes()), nil
+}
+
+// unwrapAlert : si payload = {"alert":{...}} retourne l'objet alert, sinon retourne root
+func unwrapAlert(in any) any {
+	if m, ok := in.(map[string]any); ok {
+		if alert, ok := m["alert"].(map[string]any); ok {
+			return alert
+		}
+	}
+	return in
+}
+
+// NettoyerPayloadAlertePourCreation
+// - supprime uniquement les champs interdits DANS l'objet "alert"
+// - conserve les opérateurs ">" etc (pas de \u003e)
+// - retourne un JSON propre prêt pour POST /api/alerts
+func NettoyerPayloadAlertePourCreation(in []byte) ([]byte, error) {
+	in = bytes.TrimSpace(in)
+
+	var obj any
+	if err := json.Unmarshal(in, &obj); err != nil {
+		return nil, fmt.Errorf("json invalide: %w", err)
+	}
+
+	obj = unwrapAlert(obj)
+
+	// suppression champs interdits dans l'objet alert (root)
+	if m, ok := obj.(map[string]any); ok {
+		champsInterdits := []string{
+			"id",
+			"version",
+			"createdOn",
+			"modifiedOn",
+			"customerId",
+			"lastCheckTimeInMs",
+			"notificationCount",
+			"teamId", // éviter conflit avec header SysdigTeamID
+			"teamName",
+			"severity", // tu ne veux plus "severity": 4
+		}
+		for _, k := range champsInterdits {
+			delete(m, k)
+		}
+		return marshalJSON(m)
+	}
+
+	return marshalJSON(obj)
+}
+
+// InjectNotificationChannelIDs
+// - remplace notificationChannelIds
+// - remplace aussi defaultSettings[].notificationChannelId (format legacy)
+// - conserve ">" (pas de \u003e)
+func InjectNotificationChannelIDs(in []byte, ids []int) ([]byte, error) {
+	in = bytes.TrimSpace(in)
+	if len(ids) == 0 {
+		return in, nil
+	}
+
+	var obj any
+	if err := json.Unmarshal(in, &obj); err != nil {
+		return nil, fmt.Errorf("json invalide: %w", err)
+	}
+
+	obj = unwrapAlert(obj)
+
+	m, ok := obj.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("payload alert inattendu (pas un objet JSON)")
+	}
+
+	// 1) champ principal
+	m["notificationChannelIds"] = ids
+
+	// 2) legacy : defaultSettings[].notificationChannelId
+	if dsAny, ok := m["defaultSettings"]; ok {
+		if dsArr, ok := dsAny.([]any); ok {
+			for _, it := range dsArr {
+				if dsObj, ok := it.(map[string]any); ok {
+					dsObj["notificationChannelId"] = ids[0]
+				}
+			}
+		}
+	}
+
+	return marshalJSON(m)
+}
+
+// RemoveDefaultSettingsEmailRecipients
+// supprime defaultSettings[].options.emailRecipients (pour éviter mismatch avec le channel)
+func RemoveDefaultSettingsEmailRecipients(in []byte) ([]byte, error) {
+	in = bytes.TrimSpace(in)
+
+	var obj any
+	if err := json.Unmarshal(in, &obj); err != nil {
+		return nil, fmt.Errorf("json invalide: %w", err)
+	}
+
+	obj = unwrapAlert(obj)
+
+	m, ok := obj.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("payload alert inattendu (pas un objet JSON)")
+	}
+
+	dsAny, ok := m["defaultSettings"]
+	if !ok || dsAny == nil {
+		return marshalJSON(m)
+	}
+
+	dsArr, ok := dsAny.([]any)
+	if !ok {
+		return marshalJSON(m)
+	}
+
+	for _, it := range dsArr {
+		dsObj, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		optsAny, ok := dsObj["options"]
+		if !ok || optsAny == nil {
+			continue
+		}
+		opts, ok := optsAny.(map[string]any)
+		if !ok {
+			continue
+		}
+		delete(opts, "emailRecipients")
+	}
+
+	return marshalJSON(m)
+}
+
+// InjectEmailRecipients
+// injecte defaultSettings[].options.emailRecipients = recipients (liste venant du Notification Channel)
+func InjectEmailRecipients(in []byte, recipients []string) ([]byte, error) {
+	in = bytes.TrimSpace(in)
+	if len(recipients) == 0 {
+		return in, nil
+	}
+
+	var obj any
+	if err := json.Unmarshal(in, &obj); err != nil {
+		return nil, fmt.Errorf("json invalide: %w", err)
+	}
+
+	obj = unwrapAlert(obj)
+
+	m, ok := obj.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("payload alert inattendu (pas un objet JSON)")
+	}
+
+	dsAny, ok := m["defaultSettings"]
+	if !ok || dsAny == nil {
+		return marshalJSON(m)
+	}
+
+	dsArr, ok := dsAny.([]any)
+	if !ok {
+		return marshalJSON(m)
+	}
+
+	// convert []string -> []any
+	out := make([]any, 0, len(recipients))
+	for _, r := range recipients {
+		r = bytes.NewBufferString(r).String()
+		r = string(bytes.TrimSpace([]byte(r)))
+		if r != "" {
+			out = append(out, r)
+		}
+	}
+
+	for _, it := range dsArr {
+		dsObj, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		optsAny, ok := dsObj["options"]
+		if !ok || optsAny == nil {
+			// crée options si absent
+			dsObj["options"] = map[string]any{}
+			optsAny = dsObj["options"]
+		}
+
+		opts, ok := optsAny.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		opts["emailRecipients"] = out
+	}
+
+	return marshalJSON(m)
+}
