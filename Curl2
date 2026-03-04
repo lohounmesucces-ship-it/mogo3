@@ -1,0 +1,15 @@
+curl -X POST "http://127.0.0.1:8080/v1/alerts/standard" \
+-H "Content-Type: application/json" \
+-d '{
+  "ibmAccount": "2321944",
+  "application": "PostgreSQL",
+  "instanceOrNamespace": "pg0021006684",
+  "codeAP": "AP252421",
+  "teamId": "941",
+  "alerts": [
+    "alert_connection1.json"
+  ],
+  "severity": "MEDIUM",
+  "value": "80",
+  "notificationName": "Alert to NOI PRD"
+}'
