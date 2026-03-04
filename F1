@@ -1,0 +1,66 @@
+// Supprime defaultSettings[].options.emailRecipients puis ré-injecte depuis le channel.
+func RemoveAndInjectEmailRecipientsFromChannel(in []byte, recipients []string) ([]byte, error) {
+	in = bytes.TrimSpace(in)
+
+	var obj any
+	if err := json.Unmarshal(in, &obj); err != nil {
+		return nil, fmt.Errorf("json invalide: %w", err)
+	}
+
+	// unwrap {"alert":{...}} si présent
+	if root, ok := obj.(map[string]any); ok {
+		if alert, ok := root["alert"].(map[string]any); ok {
+			obj = alert
+		}
+	}
+
+	alert, ok := obj.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("payload alert inattendu (pas un objet JSON)")
+	}
+
+	dsAny, ok := alert["defaultSettings"]
+	if !ok || dsAny == nil {
+		// pas de defaultSettings -> rien à faire
+		return json.MarshalIndent(alert, "", "  ")
+	}
+
+	ds, ok := dsAny.([]any)
+	if !ok {
+		// parfois c'est déjà un objet -> rien à faire
+		return json.MarshalIndent(alert, "", "  ")
+	}
+
+	for _, item := range ds {
+		setting, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		optsAny, ok := setting["options"]
+		if !ok || optsAny == nil {
+			continue
+		}
+		opts, ok := optsAny.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		// 1) supprimer l'existant
+		delete(opts, "emailRecipients")
+
+		// 2) injecter ceux du channel (si non vide)
+		if len(recipients) > 0 {
+			out := make([]any, 0, len(recipients))
+			for _, r := range recipients {
+				if r == "" {
+					continue
+				}
+				out = append(out, r)
+			}
+			opts["emailRecipients"] = out
+		}
+	}
+
+	alert["defaultSettings"] = ds
+	return json.MarshalIndent(alert, "", " 
+}
