@@ -1,0 +1,42 @@
+// InjectNotificationChannelIDs
+// Ajoute ou remplace notificationChannelIds ET defaultSettings[].notificationChannelId
+func InjectNotificationChannelIDs(in []byte, ids []int) ([]byte, error) {
+	in = bytes.TrimSpace(in)
+
+	if len(ids) == 0 {
+		return in, nil
+	}
+
+	var obj any
+	if err := json.Unmarshal(in, &obj); err != nil {
+		return nil, fmt.Errorf("json invalide: %w", err)
+	}
+
+	// unwrap {"alert":{...}} si présent
+	if m, ok := obj.(map[string]any); ok {
+		if alert, ok := m["alert"].(map[string]any); ok {
+			obj = alert
+		}
+	}
+
+	m, ok := obj.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("payload alert inattendu (pas un objet JSON)")
+	}
+
+	// 1) set/replace notificationChannelIds
+	m["notificationChannelIds"] = ids
+
+	// 2) set/replace defaultSettings[].notificationChannelId (legacy)
+	if dsAny, ok := m["defaultSettings"]; ok {
+		if dsArr, ok := dsAny.([]any); ok {
+			for _, item := range dsArr {
+				if dsObj, ok := item.(map[string]any); ok {
+					dsObj["notificationChannelId"] = ids[0]
+				}
+			}
+		}
+	}
+
+	return json.MarshalIndent(m, "", "  ")
+}
