@@ -1,0 +1,157 @@
+// internal/sysdig/client.go
+package sysdig
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+)
+
+type Client struct {
+	Endpoint string
+	Timeout  time.Duration
+}
+
+func New(endpoint string) *Client {
+	return &Client{
+		Endpoint: endpoint,
+		Timeout:  25 * time.Second,
+	}
+}
+
+func normalizeBearer(bearer string) string {
+	b := strings.TrimSpace(bearer)
+	if b == "" {
+		return ""
+	}
+	up := strings.ToUpper(b)
+	if strings.HasPrefix(up, "BEARER ") {
+		return "Bearer " + strings.TrimSpace(b[len("Bearer "):])
+	}
+	return "Bearer " + b
+}
+
+func (c *Client) CreateAlert(ctx context.Context, ibmInstanceID, teamID, bearer string, alertJSON []byte) (map[string]any, error) {
+	url := strings.TrimRight(c.Endpoint, "/") + "/api/alerts"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(alertJSON))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", normalizeBearer(bearer))
+	req.Header.Set("IBMInstanceID", ibmInstanceID)
+	req.Header.Set("SysdigTeamID", teamID)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	hc := &http.Client{Timeout: c.Timeout}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("sysdig create alert failed: %s - %s", resp.Status, string(body))
+	}
+
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		return map[string]any{"raw": string(body)}, nil
+	}
+	return out, nil
+}
+
+type notificationChannel struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+
+	Options struct {
+		EmailRecipients []string `json:"emailRecipients"`
+		Recipients      []string `json:"recipients"`
+	} `json:"options"`
+
+	EmailRecipients []string `json:"emailRecipients"`
+	Recipients      []string `json:"recipients"`
+}
+
+func (nc notificationChannel) getRecipients() []string {
+	if len(nc.Options.EmailRecipients) > 0 {
+		return nc.Options.EmailRecipients
+	}
+	if len(nc.Options.Recipients) > 0 {
+		return nc.Options.Recipients
+	}
+	if len(nc.EmailRecipients) > 0 {
+		return nc.EmailRecipients
+	}
+	if len(nc.Recipients) > 0 {
+		return nc.Recipients
+	}
+	return nil
+}
+
+// FindNotificationChannel returns (channelID, recipientsFromChannel)
+func (c *Client) FindNotificationChannel(ctx context.Context, ibmInstanceID, teamID, bearer, notificationName string) (int, []string, error) {
+	name := strings.TrimSpace(notificationName)
+	if name == "" {
+		return 0, nil, fmt.Errorf("empty notificationName")
+	}
+
+	url := strings.TrimRight(c.Endpoint, "/") + "/api/notificationChannels"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	req.Header.Set("Authorization", normalizeBearer(bearer))
+	req.Header.Set("IBMInstanceID", ibmInstanceID)
+	req.Header.Set("SysdigTeamID", teamID)
+	req.Header.Set("Accept", "application/json")
+
+	hc := &http.Client{Timeout: c.Timeout}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return 0, nil, fmt.Errorf("sysdig list notificationChannels failed: %s - %s", resp.Status, string(body))
+	}
+
+	// API can return either array or { "notificationChannels": [...] }
+	var arr []notificationChannel
+	if err := json.Unmarshal(body, &arr); err == nil {
+		return findNotif(arr, name)
+	}
+
+	var wrapped struct {
+		NotificationChannels []notificationChannel `json:"notificationChannels"`
+	}
+	if err := json.Unmarshal(body, &wrapped); err == nil {
+		return findNotif(wrapped.NotificationChannels, name)
+	}
+
+	return 0, nil, fmt.Errorf("unexpected notificationChannels payload: %s", string(body))
+}
+
+func findNotif(ch []notificationChannel, name string) (int, []string, error) {
+	want := strings.ToLower(strings.TrimSpace(name))
+	for _, c := range ch {
+		if strings.ToLower(strings.TrimSpace(c.Name)) == want {
+			return c.ID, c.getRecipients(), nil
+		}
+	}
+	return 0, nil, fmt.Errorf("notification not found: %s", name)
+}
