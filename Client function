@@ -1,0 +1,74 @@
+func (c *Client) ListAlerts(ctx context.Context, ibmInstanceID, teamID, bearer string) ([]map[string]any, error) {
+
+	url := strings.TrimRight(c.Endpoint, "/") + "/api/alerts"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", normalizeBearer(bearer))
+	req.Header.Set("IBMInstanceID", ibmInstanceID)
+	req.Header.Set("SysdigTeamID", teamID)
+	req.Header.Set("Accept", "application/json")
+
+	hc := &http.Client{Timeout: c.Timeout}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("sysdig list alerts failed: %s - %s", resp.Status, string(body))
+	}
+
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, err
+	}
+
+	alerts, _ := out["alerts"].([]any)
+
+	var result []map[string]any
+	for _, a := range alerts {
+		if m, ok := a.(map[string]any); ok {
+			result = append(result, m)
+		}
+	}
+
+	return result, nil
+}
+
+
+
+
+func (c *Client) DeleteAlert(ctx context.Context, ibmInstanceID, teamID, bearer string, id int) error {
+
+	url := fmt.Sprintf("%s/api/alerts/%d", strings.TrimRight(c.Endpoint, "/"), id)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", normalizeBearer(bearer))
+	req.Header.Set("IBMInstanceID", ibmInstanceID)
+	req.Header.Set("SysdigTeamID", teamID)
+
+	hc := &http.Client{Timeout: c.Timeout}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("sysdig delete alert failed: %s - %s", resp.Status, string(body))
+	}
+
+	return nil
+}
