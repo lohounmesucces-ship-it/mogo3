@@ -1,0 +1,75 @@
+func (h *Handler) ListAlerts(w http.ResponseWriter, r *http.Request) {
+
+    if r.Method != http.MethodGet {
+        w.WriteHeader(http.StatusMethodNotAllowed)
+        return
+    }
+
+    ibmAccount := strings.TrimSpace(r.URL.Query().Get("ibmAccount"))
+    teamID := strings.TrimSpace(r.URL.Query().Get("teamId"))
+
+    if ibmAccount == "" || teamID == "" {
+        http.Error(w, "missing query params: ibmAccount, teamId", http.StatusBadRequest)
+        return
+    }
+
+    tok, err := h.tokens.LoadForAccount(ibmAccount)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+
+    ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+    defer cancel()
+
+    alerts, err := h.sysdig.ListAlerts(ctx, tok.IbmInstanceID, teamID, tok.IamToken)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    _ = json.NewEncoder(w).Encode(alerts)
+}
+
+
+
+func (h *Handler) DeleteAlert(w http.ResponseWriter, r *http.Request) {
+
+    if r.Method != http.MethodDelete {
+        w.WriteHeader(http.StatusMethodNotAllowed)
+        return
+    }
+
+    ibmAccount := strings.TrimSpace(r.URL.Query().Get("ibmAccount"))
+    teamID := strings.TrimSpace(r.URL.Query().Get("teamId"))
+    alertID := strings.TrimSpace(r.URL.Query().Get("id"))
+
+    if ibmAccount == "" || teamID == "" || alertID == "" {
+        http.Error(w, "missing query params: ibmAccount, teamId, id", http.StatusBadRequest)
+        return
+    }
+
+    tok, err := h.tokens.LoadForAccount(ibmAccount)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+
+    id, _ := strconv.Atoi(alertID)
+
+    ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+    defer cancel()
+
+    err = h.sysdig.DeleteAlert(ctx, tok.IbmInstanceID, teamID, tok.IamToken, id)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    _ = json.NewEncoder(w).Encode(map[string]string{
+        "status": "deleted",
+        "id": alertID,
+    })
+}
