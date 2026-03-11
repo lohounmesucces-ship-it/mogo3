@@ -1,0 +1,38 @@
+func (c *Client) ListAlerts(ctx context.Context, ibmInstanceID, teamID, bearer string) ([]map[string]any, error) {
+
+    url := strings.TrimRight(c.Endpoint, "/") + "/api/alerts"
+
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+    if err != nil {
+        return nil, err
+    }
+
+    req.Header.Set("Authorization", normalizeBearer(bearer))
+    req.Header.Set("IBMInstanceID", ibmInstanceID)
+    req.Header.Set("SysdigTeamID", teamID)
+    req.Header.Set("Accept", "application/json")
+
+    hc := &http.Client{Timeout: c.Timeout}
+    resp, err := hc.Do(req)
+    if err != nil {
+        return nil, err
+    }
+
+    defer resp.Body.Close()
+
+    body, _ := io.ReadAll(resp.Body)
+
+    if resp.StatusCode >= 300 {
+        return nil, fmt.Errorf("list alerts failed: %s %s", resp.Status, string(body))
+    }
+
+    var wrapper struct {
+        Alerts []map[string]any `json:"alerts"`
+    }
+
+    if err := json.Unmarshal(body, &wrapper); err != nil {
+        return nil, err
+    }
+
+    return wrapper.Alerts, nil
+}
