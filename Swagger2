@@ -1,0 +1,362 @@
+openapi: 3.0.3
+
+info:
+  title: Sysdig Alerts
+  version: "1.0.0"
+  description: Version 1 for listing, creating and deleting Sysdig alerts.
+
+servers:
+  - url: https://cloud-monitoring.staging.echonet/api/sysdig-alerts-api
+    description: Apache staging endpoint
+
+tags:
+  - name: alerts
+    description: Sysdig alerts operations
+
+paths:
+  /v1/alerts/catalog:
+    get:
+      tags:
+        - alerts
+      summary: Get alert templates catalog
+      description: Returns the available alert templates for a given application.
+      operationId: getCatalog
+      parameters:
+        - name: application
+          in: query
+          required: true
+          description: Application name used to load the templates catalog.
+          schema:
+            type: string
+            example: PostgreSQL
+      responses:
+        "200":
+          description: Catalog loaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogResponse"
+        "400":
+          description: Missing or invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/alerts/list:
+    get:
+      tags:
+        - alerts
+      summary: List Sysdig alerts
+      description: Returns the existing Sysdig alerts for the provided IBM account and Sysdig team.
+      operationId: listAlerts
+      parameters:
+        - name: ibmAccount
+          in: query
+          required: true
+          description: IBM account number.
+          schema:
+            type: string
+            example: "2321944"
+        - name: teamId
+          in: query
+          required: true
+          description: Sysdig team identifier.
+          schema:
+            type: string
+            example: "941"
+      responses:
+        "200":
+          description: Alerts retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAlertsResponse"
+        "400":
+          description: Missing or invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/alerts/standard:
+    post:
+      tags:
+        - alerts
+      summary: Create standard alerts
+      description: Creates one or more Sysdig alerts from JSON templates.
+      operationId: createStandardAlert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAlertRequest"
+      responses:
+        "200":
+          description: Request processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAlertResponse"
+        "400":
+          description: Invalid JSON payload or missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/alerts/delete:
+    delete:
+      tags:
+        - alerts
+      summary: Delete a Sysdig alert
+      description: Deletes a Sysdig alert by its identifier.
+      operationId: deleteAlert
+      parameters:
+        - name: ibmAccount
+          in: query
+          required: true
+          description: IBM account number.
+          schema:
+            type: string
+            example: "2321944"
+        - name: teamId
+          in: query
+          required: true
+          description: Sysdig team identifier.
+          schema:
+            type: string
+            example: "941"
+        - name: id
+          in: query
+          required: true
+          description: Alert identifier to delete.
+          schema:
+            type: integer
+            example: 12345
+      responses:
+        "200":
+          description: Alert deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteAlertResponse"
+        "400":
+          description: Missing or invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    CreateAlertRequest:
+      type: object
+      required:
+        - ibmAccount
+        - application
+        - instanceOrNamespace
+        - codeAP
+        - teamId
+        - alerts
+      properties:
+        ibmAccount:
+          type: string
+          description: IBM account number.
+          example: "2321944"
+        application:
+          type: string
+          description: Application name used to select the templates directory.
+          example: PostgreSQL
+        instanceOrNamespace:
+          type: string
+          description: Service instance name or Kubernetes namespace.
+          example: pg0021006684
+        codeAP:
+          type: string
+          description: AP code used inside alert naming and template variables.
+          example: AP252421
+        teamId:
+          type: string
+          description: Sysdig team identifier.
+          example: "941"
+        alerts:
+          type: array
+          description: List of JSON template filenames to process.
+          items:
+            type: string
+          example:
+            - alert_connection2.json
+        value:
+          type: string
+          description: Threshold value injected into the template.
+          example: "80"
+        severity:
+          type: string
+          description: Alert severity label.
+          enum:
+            - LOW
+            - INFO
+            - MEDIUM
+            - HIGH
+          example: MEDIUM
+        notificationName:
+          type: string
+          description: Notification channel name to resolve and inject.
+          example: AP25242_OPS_PostgreSQL
+
+    CreateResult:
+      type: object
+      properties:
+        file:
+          type: string
+          description: Processed template filename.
+          example: alert_connection2.json
+        ok:
+          type: boolean
+          description: Indicates whether processing for this file succeeded.
+          example: true
+        error:
+          type: string
+          nullable: true
+          description: Error message when processing fails.
+          example: ""
+        output:
+          type: object
+          nullable: true
+          description: Raw Sysdig API output for the created alert.
+          additionalProperties: true
+
+    CreateAlertResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Global execution status.
+          example: done
+        ibmAccount:
+          type: string
+          description: IBM account used for the request.
+          example: "2321944"
+        application:
+          type: string
+          description: Application used for templates lookup.
+          example: PostgreSQL
+        instance:
+          type: string
+          description: Instance or namespace used in the request.
+          example: pg0021006684
+        codeAP:
+          type: string
+          description: AP code used in the request.
+          example: AP252421
+        teamIDUsed:
+          type: string
+          description: Effective Sysdig team identifier used.
+          example: "941"
+        notificationNameUsed:
+          type: string
+          description: Effective notification channel name used.
+          example: AP25242_OPS_PostgreSQL
+        notificationIDUsed:
+          type: integer
+          description: Effective notification channel ID used.
+          example: 56866
+        notificationRecipients:
+          type: array
+          description: Recipients resolved from the notification channel.
+          items:
+            type: string
+          example:
+            - merythe.lohoumme@externe.bnpparibas.com
+        results:
+          type: array
+          description: Per-file execution results.
+          items:
+            $ref: "#/components/schemas/CreateResult"
+
+    CatalogResponse:
+      type: object
+      properties:
+        application:
+          type: string
+          description: Requested application.
+          example: PostgreSQL
+        count:
+          type: integer
+          description: Number of available templates.
+          example: 3
+        alerts:
+          type: array
+          description: Available alert template definitions.
+          items:
+            type: object
+            additionalProperties: true
+
+    AlertItem:
+      type: object
+      description: Existing Sysdig alert object.
+      additionalProperties: true
+      example:
+        id: 12345
+        name: "[PostgreSQL/std] - [AP252421] - Warning - Number of Connections is too high for pg0021006684"
+        type: MANUAL
+        enabled: true
+
+    ListAlertsResponse:
+      type: array
+      items:
+        $ref: "#/components/schemas/AlertItem"
+
+    DeleteAlertResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Deletion status.
+          example: deleted
+        id:
+          type: string
+          description: Deleted alert identifier.
+          example: "12345"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message.
+          example: invalid request
