@@ -1,0 +1,48 @@
+func withACL(next http.Handler) http.Handler {
+	const postACL = "/apps/sysdig/data-save/www/api/acl/post_users.txt"
+	const deleteACL = "/apps/sysdig/data-save/www/api/acl/delete_users.txt"
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+
+		if r.Method == http.MethodPost && strings.Contains(path, "/v1/alerts/standard") {
+			bodyBytes, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			r.Body.Close()
+			r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+			var req struct {
+				Emails []string `json:"emails"`
+			}
+			if err := json.Unmarshal(bodyBytes, &req); err != nil {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+
+			allowed := false
+			for _, mail := range req.Emails {
+				if userAllowed(postACL, mail) {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+		}
+
+		if r.Method == http.MethodDelete && strings.Contains(path, "/v1/alerts/delete") {
+			mail := strings.TrimSpace(r.URL.Query().Get("email"))
+			if !userAllowed(deleteACL, mail) {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
