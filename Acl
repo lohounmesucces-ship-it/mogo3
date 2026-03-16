@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ACL_DIR="/apps/sysdig/data-save/www/api/acl"
+POST_FILE="$ACL_DIR/post_users.txt"
+DELETE_FILE="$ACL_DIR/delete_users.txt"
+
+usage() {
+  echo "Usage:"
+  echo "  $0 add-post USER"
+  echo "  $0 add-delete USER"
+  echo "  $0 del-post USER"
+  echo "  $0 del-delete USER"
+  echo "  $0 list"
+}
+
+mkdir -p "$ACL_DIR"
+touch "$POST_FILE" "$DELETE_FILE"
+
+cmd="${1:-}"
+user="${2:-}"
+
+case "$cmd" in
+  add-post)
+    grep -qxF "$user" "$POST_FILE" || echo "$user" >> "$POST_FILE"
+    ;;
+  add-delete)
+    grep -qxF "$user" "$DELETE_FILE" || echo "$user" >> "$DELETE_FILE"
+    ;;
+  del-post)
+    grep -vxF "$user" "$POST_FILE" > "$POST_FILE.tmp" || true
+    mv "$POST_FILE.tmp" "$POST_FILE"
+    ;;
+  del-delete)
+    grep -vxF "$user" "$DELETE_FILE" > "$DELETE_FILE.tmp" || true
+    mv "$DELETE_FILE.tmp" "$DELETE_FILE"
+    ;;
+  list)
+    echo "POST USERS:"
+    cat "$POST_FILE"
+    echo
+    echo "DELETE USERS:"
+    cat "$DELETE_FILE"
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac
