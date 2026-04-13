@@ -1,0 +1,53 @@
+import (
+	"os"
+	"strings"
+	"encoding/json"
+
+	"alerts-api/internal/auth"
+)
+
+
+data, _ := os.ReadFile("/apps/sysdig/data-save/scripts/jwks.json")
+
+var jwks auth.JWKS
+json.Unmarshal(data, &jwks)
+
+authHeader := r.Header.Get("Authorization")
+token := strings.TrimPrefix(authHeader, "Bearer ")
+
+claims, err := auth.ParseJWT(token, jwks)
+if err != nil {
+	http.Error(w, "Unauthorized", 401)
+	return                                                                                                    
+}
+
+uid := ""
+email := ""
+cn := ""
+
+if v, ok := claims["sub"].(string); ok {
+	uid = v
+}
+if v, ok := claims["email"].(string); ok {
+	email = v
+}
+if v, ok := claims["preferred_username"].(string); ok {
+	cn = v
+}
+
+os.Setenv("MELLON_uid", uid)
+os.Setenv("MELLON_mail", email)
+os.Setenv("MELLON_cn", cn)
+
+result, err := sysdiglib.CheckRights(accountID, instanceName)
+if err != nil {
+	http.Error(w, "Forbidden", 403)
+	return
+}
+
+if result != "true" {
+	http.Error(w, "Forbidden", 403)
+	return
+}
+
+
