@@ -1,0 +1,23 @@
+uid := ""
+
+if v, ok := claims["preferred_username"]; ok {
+    if s, ok := v.(string); ok {
+        uid = s
+    }
+}
+
+if uid == "" {
+    if v, ok := claims["email"]; ok {
+        if s, ok := v.(string); ok {
+            uid = s
+        }
+    }
+}
+
+if uid == "" {
+    if v, ok := claims["sub"]; ok {
+        if s, ok := v.(string); ok {
+            uid = s
+        }
+    }
+}
