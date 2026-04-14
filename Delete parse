@@ -1,0 +1,36 @@
+sysdigLibrary.Trace("INFO", "START DeleteStandardAlert")
+
+authHeader := r.Header.Get("Authorization")
+if authHeader == "" {
+    sysdigLibrary.Trace("ERROR", "NO AUTH HEADER")
+    http.Error(w, "Missing Authorization", 401)
+    return
+}
+
+sysdigLibrary.Trace("DEBUG", "AUTH="+authHeader)
+
+if !strings.HasPrefix(authHeader, "Bearer ") {
+    sysdigLibrary.Trace("ERROR", "INVALID AUTH FORMAT="+authHeader)
+    http.Error(w, "Invalid Authorization format", 401)
+    return
+}
+
+token := strings.TrimPrefix(authHeader, "Bearer ")
+sysdigLibrary.Trace("DEBUG", "TOKEN="+token)
+
+data, _ := os.ReadFile("/apps/sysdig/data-save/scripts/jwks.json")
+
+var jwks auth.JWKS
+json.Unmarshal(data, &jwks)
+
+sysdigLibrary.Trace("DEBUG", "TRY PARSE JWT")
+
+claims, err := auth.ParseJWT(token, jwks)
+if err != nil {
+    sysdigLibrary.Trace("ERROR", err.Error())
+    sysdigLibrary.Trace("ERROR", "Unauthorized JWT")
+    http.Error(w, "Unauthorized", 401)
+    return
+}
+
+log.Printf("CLAIMS = %+v", claims)
