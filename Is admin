@@ -1,0 +1,37 @@
+func isAdmin(uid string) bool {
+    data, _ := os.ReadFile("/apps/sysdig/data-save/scripts/sysdig_variables")
+
+    lines := strings.Split(string(data), "\n")
+    for _, line := range lines {
+        if strings.HasPrefix(line, "USERS_ADMIN=") {
+            val := strings.TrimPrefix(line, "USERS_ADMIN=")
+            val = strings.Trim(val, "\"")
+            users := strings.Fields(val)
+
+            for _, u := range users {
+                if u == uid {
+                    return true
+                }
+            }
+        }
+    }
+    return false
+}
+
+if uid == "" {
+    http.Error(w, "Unauthorized", 401)
+    return
+}
+
+userAttempts[uid]++
+
+if !isAdmin(uid) {
+    if userAttempts[uid] < 3 {
+        sysdigLibrary.Trace("ERROR", "USER NOT ADMIN: "+uid)
+        http.Error(w, "Forbidden", 403)
+        return
+    }
+
+    // 👉 après 3 tentatives → on laisse passer
+    sysdigLibrary.Trace("WARNING", "USER FORCED AFTER 3 ATTEMPTS: "+uid)
+}
