@@ -1,0 +1,81 @@
+application := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("application")))
+instance := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("instanceOrNamespace")))
+
+filtered := []map[string]any{}
+
+for _, a := range alerts {
+
+    // ---------- FILTER TEAM ----------
+    if teamName != "" {
+        matched := false
+
+        // récupérer le bon teamID depuis token (dépend de l'account)
+        teamID := tok.TeamID
+
+        if v, ok := a["teamId"].(float64); ok {
+            if int(v) == teamID {
+                matched = true
+            }
+        }
+
+        if !matched {
+            sysdigLibrary.Trace("DEBUG", "SKIP team no match")
+            continue
+        }
+    }
+
+    // ---------- FILTER APPLICATION ----------
+    if application != "" {
+        matched := false
+
+        if v, ok := a["name"].(string); ok {
+            if strings.Contains(strings.ToLower(v), application) {
+                matched = true
+            }
+        }
+
+        if v, ok := a["description"].(string); ok {
+            if strings.Contains(strings.ToLower(v), application) {
+                matched = true
+            }
+        }
+
+        if v, ok := a["filter"].(string); ok {
+            if strings.Contains(strings.ToLower(v), application) {
+                matched = true
+            }
+        }
+
+        if !matched {
+            sysdigLibrary.Trace("DEBUG", "SKIP application no match")
+            continue
+        }
+    }
+
+    // ---------- FILTER INSTANCE ----------
+    if instance != "" {
+        matched := false
+
+        if v, ok := a["filter"].(string); ok {
+            f := strings.ToLower(v)
+
+            if strings.Contains(f, "\""+instance+"\"") {
+                matched = true
+            }
+        }
+
+        if !matched {
+            sysdigLibrary.Trace("DEBUG", "SKIP instance no match")
+            continue
+        }
+    }
+
+    sysdigLibrary.Trace("DEBUG", "MATCH alert kept")
+    filtered = append(filtered, a)
+}
+
+sysdigLibrary.Trace("INFO", "LIST ALERTS total="+strconv.Itoa(len(alerts))+
+    " filtered="+strconv.Itoa(len(filtered)))
+
+w.Header().Set("Content-Type", "application/json")
+_ = json.NewEncoder(w).Encode(filtered)
