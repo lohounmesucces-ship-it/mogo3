@@ -1,0 +1,24 @@
+teamIndex := map[string]int{
+    "monitor operations": 0,
+    "bp2i":               1,
+    "dev":                2,
+    "ops":                3,
+    "tmp":                4,
+}
+
+idx := 3 // défaut OPS
+
+if v, ok := teamIndex[strings.ToLower(teamName)]; ok {
+    idx = v
+}
+
+teamIDStr := ""
+if idx < len(tok.TeamIDs) {
+    teamIDStr = strings.TrimSpace(tok.TeamIDs[idx])
+}
+
+teamIDInt, _ := strconv.Atoi(teamIDStr)
+
+sysdigLibrary.Trace("INFO",
+    "TEAM RESOLVED teamName="+teamName+" -> teamID="+teamIDStr,
+)
