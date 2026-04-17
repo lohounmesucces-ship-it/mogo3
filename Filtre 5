@@ -1,0 +1,87 @@
+application := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("application")))
+instance := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("instanceOrNamespace")))
+team := strings.ToLower(strings.TrimSpace(teamName))
+
+filtered := []map[string]any{}
+
+for _, a := range alerts {
+
+    // ---------- FILTER TEAM ----------
+    if team != "" {
+        matched := false
+
+        // teamId (le vrai champ fiable)
+        if v, ok := a["teamId"].(float64); ok {
+            if strings.Contains(strings.ToLower(team), strconv.Itoa(int(v))) {
+                matched = true
+            }
+        }
+
+        // fallback groupName
+        if v, ok := a["groupName"].(string); ok {
+            if strings.Contains(strings.ToLower(v), team) {
+                matched = true
+            }
+        }
+
+        if !matched {
+            sysdigLibrary.Trace("DEBUG", "SKIP team no match")
+            continue
+        }
+    }
+
+    // ---------- FILTER APPLICATION ----------
+    if application != "" {
+        matched := false
+
+        if v, ok := a["name"].(string); ok {
+            if strings.Contains(strings.ToLower(v), application) {
+                matched = true
+            }
+        }
+
+        if v, ok := a["description"].(string); ok {
+            if strings.Contains(strings.ToLower(v), application) {
+                matched = true
+            }
+        }
+
+        if v, ok := a["filter"].(string); ok {
+            if strings.Contains(strings.ToLower(v), application) {
+                matched = true
+            }
+        }
+
+        if !matched {
+            sysdigLibrary.Trace("DEBUG", "SKIP application no match")
+            continue
+        }
+    }
+
+    // ---------- FILTER INSTANCE ----------
+    if instance != "" {
+        matched := false
+
+        if v, ok := a["filter"].(string); ok {
+            f := strings.ToLower(v)
+
+            if strings.Contains(f, "\""+instance+"\"") {
+                matched = true
+            }
+        }
+
+        if !matched {
+            sysdigLibrary.Trace("DEBUG", "SKIP instance no match")
+            continue
+        }
+    }
+
+    sysdigLibrary.Trace("DEBUG", "MATCH alert kept")
+    filtered = append(filtered, a)
+}
+
+sysdigLibrary.Trace("INFO", "LIST ALERTS total="+strconv.Itoa(len(alerts))+
+    " filtered="+strconv.Itoa(len(filtered)))
+
+w.Header().Set("Content-Type", "application/json")
+_ = json.NewEncoder(w).Encode(filtered)
