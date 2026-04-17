@@ -1,0 +1,17 @@
+for i := range defs {
+
+    // VALUE → chiffre (string déjà ok normalement)
+    if v, ok := defs[i]["value"].(string); ok {
+        defs[i]["value"] = v
+    }
+
+    // SEVERITY → lettre propre (LOW / MEDIUM / HIGH)
+    if s, ok := defs[i]["severity"].(string); ok {
+        defs[i]["severity"] = mapSeverity(s)
+    }
+
+    // TIMESPAN → chiffre (string)
+    if t, ok := defs[i]["timespan"].(string); ok {
+        defs[i]["timespan"] = t
+    }
+}
