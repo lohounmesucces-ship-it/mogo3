@@ -1,0 +1,76 @@
+application := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("application")))
+instance := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("instanceOrNamespace")))
+
+teamIDStr, _ := tok.TeamIDAuto("", "", 3)
+teamIDInt, _ := strconv.Atoi(strings.TrimSpace(teamIDStr))
+
+sysdigLibrary.Trace("INFO",
+    "LIST ALERTS FILTERS ibmAccount="+ibmAccount+
+        " teamName="+teamName+
+        " application="+application+
+        " instanceOrNamespace="+instance+
+        " teamID="+teamIDStr,
+)
+
+filtered := []map[string]any{}
+
+for _, a := range alerts {
+
+    // ---------- FILTER TEAM ----------
+    if teamName != "" {
+        matched := false
+
+        if v, ok := a["teamId"].(float64); ok {
+            if int(v) == teamIDInt {
+                matched = true
+            }
+        }
+
+        if !matched {
+            sysdigLibrary.Trace("DEBUG", "SKIP team no match")
+            continue
+        }
+    }
+
+    // ---------- BUILD SEARCH TEXT ----------
+    name := ""
+    if v, ok := a["name"].(string); ok {
+        name = strings.ToLower(v)
+    }
+
+    filterStr := ""
+    if v, ok := a["filter"].(string); ok {
+        filterStr = strings.ToLower(v)
+    }
+
+    description := ""
+    if v, ok := a["description"].(string); ok {
+        description = strings.ToLower(v)
+    }
+
+    text := name + " | " + filterStr + " | " + description
+    sysdigLibrary.Trace("DEBUG", "ALERT_TEXT="+text)
+
+    // ---------- FILTER APPLICATION ----------
+    if application != "" && !strings.Contains(text, application) {
+        sysdigLibrary.Trace("DEBUG", "SKIP application no match")
+        continue
+    }
+
+    // ---------- FILTER INSTANCE ----------
+    if instance != "" && !strings.Contains(text, "\""+instance+"\"") && !strings.Contains(text, instance) {
+        sysdigLibrary.Trace("DEBUG", "SKIP instance no match")
+        continue
+    }
+
+    sysdigLibrary.Trace("DEBUG", "MATCH alert kept")
+    filtered = append(filtered, a)
+}
+
+sysdigLibrary.Trace("INFO",
+    "LIST ALERTS total="+strconv.Itoa(len(alerts))+
+        " filtered="+strconv.Itoa(len(filtered)),
+)
+
+w.Header().Set("Content-Type", "application/json")
+_ = json.NewEncoder(w).Encode(filtered)
