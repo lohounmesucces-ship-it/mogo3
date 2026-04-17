@@ -1,0 +1,19 @@
+for i := range defs {
+
+    defs[i].Severity = mapSeverity(defs[i].Severity)
+
+    // convert value LOW/MEDIUM/HIGH → chiffre
+    switch strings.ToUpper(defs[i].Value) {
+    case "LOW":
+        defs[i].Value = "50"
+    case "MEDIUM":
+        defs[i].Value = "80"
+    case "HIGH":
+        defs[i].Value = "90"
+    }
+
+    // default timespan si vide
+    if defs[i].Timespan == "" {
+        defs[i].Timespan = "40"
+    }
+}
