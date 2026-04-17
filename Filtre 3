@@ -1,0 +1,48 @@
+ibmAccount := strings.TrimSpace(r.URL.Query().Get("ibmAccount"))
+teamName := strings.TrimSpace(r.URL.Query().Get("teamName"))
+
+
+sysdigLibrary.Trace("INFO", "LIST ALERTS FILTERS ibmAccount="+ibmAccount+
+    " teamName="+teamName+
+    " application="+application+
+    " instanceOrNamespace="+instance)
+
+filtered := []map[string]any{}
+
+for _, a := range alerts {
+
+    name := ""
+    if v, ok := a["name"].(string); ok {
+        name = strings.ToLower(v)
+    }
+
+    filterStr := ""
+    if v, ok := a["filter"].(string); ok {
+        filterStr = strings.ToLower(v)
+    }
+
+    description := ""
+    if v, ok := a["description"].(string); ok {
+        description = strings.ToLower(v)
+    }
+
+    text := name + " | " + filterStr + " | " + description
+
+    sysdigLibrary.Trace("DEBUG", "ALERT_TEXT="+text)
+
+    if application != "" && !strings.Contains(text, application) {
+        sysdigLibrary.Trace("DEBUG", "SKIP application no match")
+        continue
+    }
+
+    if instance != "" && !strings.Contains(text, instance) {
+        sysdigLibrary.Trace("DEBUG", "SKIP instance no match")
+        continue
+    }
+
+    sysdigLibrary.Trace("DEBUG", "MATCH alert kept")
+    filtered = append(filtered, a)
+}
+
+sysdigLibrary.Trace("INFO", "LIST ALERTS total="+strconv.Itoa(len(alerts))+
+    " filtered="+strconv.Itoa(len(filtered)))
