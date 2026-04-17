@@ -1,0 +1,29 @@
+filtered := []map[string]any{}
+
+for _, a := range alerts {
+
+    text := ""
+
+    if v, ok := a["name"].(string); ok {
+        text += strings.ToLower(v)
+    }
+
+    if v, ok := a["filter"].(string); ok {
+        text += " " + strings.ToLower(v)
+    }
+
+    if v, ok := a["description"].(string); ok {
+        text += " " + strings.ToLower(v)
+    }
+
+    if application != "" && !strings.Contains(text, application) {
+        continue
+    }
+
+    if instance != "" && !strings.Contains(text, instance) {
+        continue
+    }
+
+    filtered = append(filtered, a)
+}
+log.Printf("ALERT TEXT = %+v", a)
