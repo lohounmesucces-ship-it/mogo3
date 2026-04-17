@@ -1,0 +1,24 @@
+application := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("application")))
+instance := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("instanceOrNamespace")))
+codeAP := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("codeAP")))
+
+filtered := []interface{}{}
+
+for _, a := range alerts {
+
+    name := strings.ToLower(a.Name)
+
+    if application != "" && !strings.Contains(name, application) {
+        continue
+    }
+
+    if instance != "" && !strings.Contains(name, instance) {
+        continue
+    }
+
+    if codeAP != "" && !strings.Contains(name, codeAP) {
+        continue
+    }
+
+    filtered = append(filtered, a)
+}
