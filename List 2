@@ -1,0 +1,23 @@
+filtered := []map[string]any{}
+
+for _, a := range alerts {
+
+    name := ""
+    if v, ok := a["name"].(string); ok {
+        name = strings.ToLower(v)
+    }
+
+    if application != "" && !strings.Contains(name, application) {
+        continue
+    }
+
+    if instance != "" && !strings.Contains(name, instance) {
+        continue
+    }
+
+    if codeAP != "" && !strings.Contains(name, codeAP) {
+        continue
+    }
+
+    filtered = append(filtered, a)
+}
