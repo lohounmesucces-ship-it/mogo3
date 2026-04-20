@@ -1,0 +1,30 @@
+// Send maintenance to NOI API
+fmt.Fprintln(w, ".")
+
+status, resp, err := sendMaintenanceToNOI(
+    resource,
+    resourceName,
+    env,
+    accountIDlong,
+    cluster,
+    textNetcool,
+    maintenancestartFmt,
+    duration,
+    ID,
+)
+
+if err != nil {
+    sysdigLibrary.Trace("ERROR", "NOI API call error: "+err.Error())
+    fmt.Fprintf(w, "<h2><center>Maintenance ID %s created in database but API ERROR: %s</center></h2></html>", ID, err.Error())
+    return
+}
+
+if status < 200 || status >= 300 {
+    sysdigLibrary.Trace("ERROR", "NOI API failed status="+strconv.Itoa(status)+" response="+resp)
+    fmt.Fprintf(w, "<h2><center>Maintenance ID %s created in database but API FAILED (%d): %s</center></h2></html>", ID, status, resp)
+    return
+}
+
+sysdigLibrary.Trace("INFO", "Maintenance ID "+ID+" sent via NOI API successfully")
+fmt.Fprintf(w, "<h2><center>Maintenance ID %s OK via API</center></h2></html>", ID)
+return
