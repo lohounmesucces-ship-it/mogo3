@@ -1,0 +1,72 @@
+func sendMaintenanceToNOI(resource, resourceName, env, accountIDlong, cluster, text string, start time.Time, duration, ID string) (int, string, error) {
+
+    baseURL := sysdigLibrary.ReadEnv(sysdigLibrary.BASEDIR, "NOI_API_URL")
+    path := sysdigLibrary.ReadEnv(sysdigLibrary.BASEDIR, "NOI_API_MAINTENANCE_PATH")
+    enterprise := sysdigLibrary.ReadEnv(sysdigLibrary.BASEDIR, "NOI_API_ENTERPRISE")
+    sourceMonitoring := sysdigLibrary.ReadEnv(sysdigLibrary.BASEDIR, "NOI_API_SOURCE_MONITORING")
+
+    url := baseURL + path
+
+    tokenCmd := exec.Command(sysdigLibrary.BASEDIR+"/netcool_get_oauth2_token", "-m")
+    out, err := tokenCmd.CombinedOutput()
+    if err != nil {
+        return 0, string(out), err
+    }
+    token := strings.TrimSpace(string(out))
+
+    durH, err := strconv.Atoi(duration)
+    if err != nil {
+        return 0, "", err
+    }
+
+    end := start.Add(time.Duration(durH) * time.Hour)
+
+    payload := map[string]interface{}{
+        "type":             "Planned",
+        "identifier":       "mnt_" + resourceName + "_" + ID,
+        "enterprise":       enterprise,
+        "sourceMonitoring": []string{sourceMonitoring},
+        "endAction":        2,
+        "from":             start.Format("2006-01-02 15:04:05"),
+        "until":            end.Format("2006-01-02 15:04:05"),
+    }
+
+    if resource == "namespace" {
+        payload["dMZRNameSpace"] = resourceName
+        payload["dMZRAccountID"] = accountIDlong
+        payload["dMZRClusterName"] = cluster
+    } else {
+        payload["host"] = resourceName
+        payload["instance"] = resourceName
+    }
+
+    body, err := json.Marshal(payload)
+    if err != nil {
+        return 0, "", err
+    }
+
+    req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+    if err != nil {
+        return 0, "", err
+    }
+
+    req.Header.Set("Authorization", "Bearer "+token)
+    req.Header.Set("Content-Type", "application/json")
+
+    client := &http.Client{Timeout: 30 * time.Second}
+
+    resp, err := client.Do(req)
+    if err != nil {
+        return 0, "", err
+    }
+    defer resp.Body.Close()
+
+    b, _ := ioutil.ReadAll(resp.Body)
+
+    sysdigLibrary.Trace("INFO", "NOI URL="+url)
+    sysdigLibrary.Trace("INFO", "NOI BODY="+string(body))
+    sysdigLibrary.Trace("INFO", "NOI STATUS="+strconv.Itoa(resp.StatusCode))
+    sysdigLibrary.Trace("INFO", "NOI RESPONSE="+string(b))
+
+    return resp.StatusCode, string(b), nil
+}
