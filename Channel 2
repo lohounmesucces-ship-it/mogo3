@@ -1,0 +1,32 @@
+channels, err := h.sysdig.GetNotificationChannels(
+    ctx,
+    tok.IbmInstanceID,
+    teamID,
+    tok.IamToken,
+)
+if err != nil {
+    results = append(results, CreateResult{File: file, OK: false, Error: err.Error()})
+    continue
+}
+
+if len(channels) == 0 {
+    results = append(results, CreateResult{File: file, OK: false, Error: "no notification channel"})
+    continue
+}
+
+idFloat, ok := channels[0]["id"].(float64)
+if !ok {
+    results = append(results, CreateResult{File: file, OK: false, Error: "invalid channel id"})
+    continue
+}
+
+channelID := int(idFloat)
+
+// inject
+var alert map[string]any
+if err := json.Unmarshal(alertBody, &alert); err != nil {
+    continue
+}
+
+alert["notificationChannelId"] = channelID
+alertBody, _ = json.Marshal(alert)
