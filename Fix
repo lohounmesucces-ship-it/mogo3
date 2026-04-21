@@ -1,0 +1,33 @@
+var alert map[string]any
+_ = json.Unmarshal(alertBody, &alert)
+
+//  fonction récursive pour nettoyer PARTOUT
+var clean func(map[string]any)
+clean = func(m map[string]any) {
+    delete(m, "notificationChannelId")
+    delete(m, "notificationChannelIds")
+
+    for _, v := range m {
+        if sub, ok := v.(map[string]any); ok {
+            clean(sub)
+        }
+        if arr, ok := v.([]any); ok {
+            for _, item := range arr {
+                if sub, ok := item.(map[string]any); ok {
+                    clean(sub)
+                }
+            }
+        }
+    }
+}
+
+clean(alert)
+
+// inject UNIQUEMENT le bon
+if settings, ok := alert["settings"].(map[string]any); ok {
+    settings["notificationChannelId"] = channelID
+} else {
+    alert["notificationChannelId"] = channelID
+}
+
+alertBody, _ = json.Marshal(alert)
