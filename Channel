@@ -1,0 +1,23 @@
+//  récupérer notificationChannelId
+channelID, _, err := h.sysdig.FindNotificationChannel(
+    ctx,
+    tok.IbmInstanceID,
+    teamID,
+    tok.IamToken,
+    "email-default", 
+)
+if err != nil {
+    results = append(results, CreateResult{File: file, OK: false, Error: err.Error()})
+    continue
+}
+
+// injecter dans le JSON FINAL
+var alert map[string]any
+if err := json.Unmarshal(alertBody, &alert); err != nil {
+    results = append(results, CreateResult{File: file, OK: false, Error: err.Error()})
+    continue
+}
+
+alert["notificationChannelId"] = channelID
+
+alertBody, _ = json.Marshal(alert)
