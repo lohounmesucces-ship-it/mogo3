@@ -1,0 +1,22 @@
+channels, err := h.sysdig.GetNotificationChannels(ctx, tok.IbmInstanceID, teamID, tok.IamToken)
+if err != nil {
+    continue
+}
+
+idFloat, _ := channels[0]["id"].(float64)
+channelID := int(idFloat)
+
+//  inject proprement
+var alert map[string]any
+_ = json.Unmarshal(alertBody, &alert)
+
+//  SUPPRIMER l'ancien champ
+delete(alert, "notificationChannelId")
+
+// remettre le bon
+alert["notificationChannelId"] = channelID
+
+alertBody, _ = json.Marshal(alert)
+
+//  TRACE
+sysdigLibrary.Trace("DEBUG", "FINAL notificationChannelId="+strconv.Itoa(channelID))
