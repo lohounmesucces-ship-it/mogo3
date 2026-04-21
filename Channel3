@@ -1,0 +1,39 @@
+func (c *Client) GetNotificationChannels(ctx context.Context, ibmInstanceID, teamID, bearer string) ([]map[string]any, error) {
+    url := strings.TrimRight(c.Endpoint, "/") + "/api/notificationChannels"
+
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+    if err != nil {
+        return nil, err
+    }
+
+    req.Header.Set("Authorization", normalizeBearer(bearer))
+    req.Header.Set("IBMInstanceID", ibmInstanceID)
+    req.Header.Set("SysdigTeamID", teamID)
+    req.Header.Set("Accept", "application/json")
+
+    resp, err := (&http.Client{Timeout: c.Timeout}).Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    body, _ := io.ReadAll(resp.Body)
+
+    if resp.StatusCode >= 300 {
+        return nil, fmt.Errorf("list channels failed: %s %s", resp.Status, string(body))
+    }
+
+    var arr []map[string]any
+    if err := json.Unmarshal(body, &arr); err == nil {
+        return arr, nil
+    }
+
+    var wrapped struct {
+        NotificationChannels []map[string]any `json:"notificationChannels"`
+    }
+    if err := json.Unmarshal(body, &wrapped); err == nil {
+        return wrapped.NotificationChannels, nil
+    }
+
+    return nil, fmt.Errorf("unexpected response")
+}
