@@ -1,0 +1,45 @@
+teamName := teamName // déjà chez toi
+app := req.Application
+codeAP := req.CodeAP
+
+// CAS MONITOR OPERATIONS
+if teamName == "monitor operations" {
+	ch, err := h.sysdig.FindNotificationChannelByName(ctx, tok.IbmInstanceID, teamID, tok.IamToken, "Alert to NOI PRD")
+	if err != nil || ch == nil {
+		results = append(results, CreateResult{File: file, OK: false, Error: "NOI channel not found"})
+		continue
+	}
+	idFloat := ch["id"].(float64)
+	channelID = int(idFloat)
+
+} else {
+
+	name := codeAP + "_" + teamName + "_" + app
+
+	ch, err := h.sysdig.FindNotificationChannelByName(ctx, tok.IbmInstanceID, teamID, tok.IamToken, name)
+	if err != nil {
+		results = append(results, CreateResult{File: file, OK: false, Error: err.Error()})
+		continue
+	}
+
+	if ch == nil {
+		sysdigLibrary.Trace("INFO", "CREATE notification channel: "+name)
+
+		channelID, err = h.sysdig.CreateNotificationChannel(
+			ctx,
+			tok.IbmInstanceID,
+			teamID,
+			tok.IamToken,
+			name,
+			email, // déjà récupéré chez toi
+		)
+		if err != nil {
+			results = append(results, CreateResult{File: file, OK: false, Error: err.Error()})
+			continue
+		}
+
+	} else {
+		idFloat := ch["id"].(float64)
+		channelID = int(idFloat)
+	}
+}
