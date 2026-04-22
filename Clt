@@ -1,0 +1,12 @@
+func (c *Client) FindNotificationChannelByName(ctx context.Context, instID, teamID, iamToken, name string) (map[string]any, error) {
+	channels, err := c.GetNotificationChannels(ctx, instID, teamID, iamToken)
+	if err != nil {
+		return nil, err
+	}
+	for _, ch := range channels {
+		if ch["name"] == name {
+			return ch, nil
+		}
+	}
+	return nil, nil
+}
