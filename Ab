@@ -1,0 +1,69 @@
+// récupérer ou créer notificationChannelId
+
+ch, err := h.sysdig.FindNotificationChannelByName(ctx, tok.IbmInstanceID, teamID, tok.IamToken, name)
+if err != nil {
+    sysdigLibrary.Trace("ERROR", err.Error())
+    http.Error(w, err.Error(), 500)
+    return
+}
+
+if ch == nil {
+    sysdigLibrary.Trace("INFO", "CREATE notification channel: "+name)
+
+    var email string
+    if len(req.Emails) > 0 {
+        email = req.Emails[0]
+    }
+
+    if email == "" {
+        sysdigLibrary.Trace("ERROR", "missing email")
+        http.Error(w, "missing email", 400)
+        return
+    }
+
+    _, err = h.sysdig.CreateNotificationChannel(
+        ctx,
+        tok.IbmInstanceID,
+        teamID,
+        tok.IamToken,
+        name,
+        email,
+    )
+    if err != nil {
+        sysdigLibrary.Trace("ERROR", err.Error())
+        http.Error(w, err.Error(), 500)
+        return
+    }
+
+    // re-find après création
+    ch, err = h.sysdig.FindNotificationChannelByName(ctx, tok.IbmInstanceID, teamID, tok.IamToken, name)
+    if err != nil {
+        sysdigLibrary.Trace("ERROR", err.Error())
+        http.Error(w, err.Error(), 500)
+        return
+    }
+
+    if ch == nil {
+        sysdigLibrary.Trace("ERROR", "channel still nil after creation")
+        http.Error(w, "channel not found", 500)
+        return
+    }
+}
+
+// récupération ID
+idVal, ok := ch["id"]
+if !ok {
+    sysdigLibrary.Trace("ERROR", "missing channel id")
+    http.Error(w, "missing channel id", 500)
+    return
+}
+
+idFloat, ok := idVal.(float64)
+if !ok {
+    sysdigLibrary.Trace("ERROR", "invalid channel id type")
+    http.Error(w, "invalid channel id type", 500)
+    return
+}
+
+channelID := int(idFloat)
+sysdigLibrary.Trace("INFO", "FINAL channelID="+strconv.Itoa(channelID))
