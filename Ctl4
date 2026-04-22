@@ -1,0 +1,30 @@
+ch, err := h.sysdig.FindNotificationChannelByName(ctx, tok.IbmInstanceID, teamID, tok.IamToken, name)
+if err != nil {
+    results = append(results, CreateResult{File: file, OK: false, Error: err.Error()})
+    return
+}
+
+if ch == nil {
+    sysdigLibrary.Trace("INFO", "CREATE notification channel: "+name)
+
+    var email string
+    if len(req.Emails) > 0 {
+        email = req.Emails[0]
+    }
+
+    channelID, err = h.sysdig.CreateNotificationChannel(
+        ctx,
+        tok.IbmInstanceID,
+        teamID,
+        tok.IamToken,
+        name,
+        email,
+    )
+    if err != nil {
+        results = append(results, CreateResult{File: file, OK: false, Error: err.Error()})
+        return
+    }
+} else {
+    idFloat := ch["id"].(float64)
+    channelID = int(idFloat)
+}
