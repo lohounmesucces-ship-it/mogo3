@@ -1,0 +1,30 @@
+func (c *Client) CreateNotificationChannel(ctx context.Context, instID, teamID, iamToken, name, email string) (int, error) {
+
+	body := map[string]any{
+		"name": name,
+		"type": "EMAIL",
+		"enabled": true,
+		"settings": map[string]any{
+			"recipients": []string{email},
+		},
+	}
+
+	b, _ := json.Marshal(body)
+
+	resp, err := c.doRequest(ctx, "POST",
+		"/api/notificationChannels",
+		instID,
+		teamID,
+		iamToken,
+		b,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	var out map[string]any
+	_ = json.Unmarshal(resp, &out)
+
+	id := int(out["id"].(float64))
+	return id, nil
+}
