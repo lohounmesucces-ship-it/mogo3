@@ -1,0 +1,49 @@
+var channelID int
+
+if ch == nil {
+    sysdigLibrary.Trace("INFO", "CREATE notification channel: "+name)
+
+    var email string
+    if len(req.Emails) > 0 {
+        email = req.Emails[0]
+    }
+
+    if email == "" {
+        http.Error(w, "missing email", 400)
+        return
+    }
+
+    channelID, err = h.sysdig.CreateNotificationChannel(
+        ctx,
+        tok.IbmInstanceID,
+        teamID,
+        tok.IamToken,
+        name,
+        email,
+    )
+    if err != nil {
+        results = append(results, CreateResult{File: file, OK: false, Error: err.Error()})
+        return
+    }
+
+    sysdigLibrary.Trace("INFO", "channelID FROM CREATE OK")
+
+} else {
+    sysdigLibrary.Trace("INFO", "CHANNEL FOUND")
+
+    idVal, ok := ch["id"]
+    if !ok {
+        sysdigLibrary.Trace("ERROR", "missing channel id")
+        http.Error(w, "missing channel id", 500)
+        return
+    }
+
+    idFloat, ok := idVal.(float64)
+    if !ok {
+        sysdigLibrary.Trace("ERROR", "invalid channel id type")
+        http.Error(w, "invalid channel id type", 500)
+        return
+    }
+
+    channelID = int(idFloat)
+}
