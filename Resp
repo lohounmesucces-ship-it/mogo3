@@ -1,0 +1,32 @@
+resp, err := http.DefaultClient.Do(req)
+if err != nil {
+    return 0, err
+}
+defer resp.Body.Close()
+
+bodyResp, _ := io.ReadAll(resp.Body)
+
+sysdigLibrary.Trace("INFO", "CREATE CHANNEL STATUS="+resp.Status)
+sysdigLibrary.Trace("INFO", "CREATE CHANNEL BODY="+string(bodyResp))
+
+if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+    return 0, fmt.Errorf("create channel failed: %s - %s", resp.Status, string(bodyResp))
+}
+
+var out map[string]any
+err = json.Unmarshal(bodyResp, &out)
+if err != nil {
+    return 0, err
+}
+
+idVal, ok := out["id"]
+if !ok {
+    return 0, fmt.Errorf("missing id in response")
+}
+
+idFloat, ok := idVal.(float64)
+if !ok {
+    return 0, fmt.Errorf("invalid id type")
+}
+
+return int(idFloat), nil
