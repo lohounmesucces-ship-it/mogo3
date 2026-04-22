@@ -1,0 +1,21 @@
+} else {
+    sysdigLibrary.Trace("INFO", "CHANNEL RAW")
+
+    idVal, ok := ch["id"]
+    if !ok {
+        sysdigLibrary.Trace("ERROR", "missing channel id")
+        http.Error(w, "missing channel id", 500)
+        return
+    }
+
+    idFloat, ok := idVal.(float64)
+    if !ok {
+        sysdigLibrary.Trace("ERROR", "invalid channel id type")
+        http.Error(w, "invalid channel id type", 500)
+        return
+    }
+
+    channelID = int(idFloat)
+
+    sysdigLibrary.Trace("INFO", "channelID OK")
+}
