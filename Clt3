@@ -1,0 +1,27 @@
+b, _ := json.Marshal(body)
+
+url := c.baseURL + "/api/notificationChannels"
+
+req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
+if err != nil {
+    return 0, err
+}
+
+req.Header.Set("Authorization", "Bearer "+iamToken)
+req.Header.Set("Content-Type", "application/json")
+req.Header.Set("X-Scope-OrgID", instID)
+req.Header.Set("X-Scope-TeamID", teamID)
+
+resp, err := http.DefaultClient.Do(req)
+if err != nil {
+    return 0, err
+}
+defer resp.Body.Close()
+
+bodyResp, _ := io.ReadAll(resp.Body)
+
+var out map[string]any
+_ = json.Unmarshal(bodyResp, &out)
+
+id := int(out["id"].(float64))
+return id, nil
