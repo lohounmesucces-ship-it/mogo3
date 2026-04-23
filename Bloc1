@@ -1,0 +1,16 @@
+var resp map[string]any
+err = json.Unmarshal(out, &resp)
+if err != nil {
+    sysdigLibrary.Trace("ERROR", "BAD SCRIPT OUTPUT="+string(out))
+    http.Error(w, "invalid script output", 500)
+    return
+}
+
+channelIDFloat, ok := resp["id"].(float64)
+if !ok {
+    sysdigLibrary.Trace("ERROR", "NO ID IN SCRIPT="+string(out))
+    http.Error(w, "invalid channel id", 500)
+    return
+}
+
+channelID := int(channelIDFloat)
