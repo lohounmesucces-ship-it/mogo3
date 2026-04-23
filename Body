@@ -1,0 +1,14 @@
+body := map[string]any{
+    "notificationChannel": map[string]any{
+        "teamId": teamID,
+        "enabled": true,
+        "sendTestNotification": true,
+        "name": name,
+        "type": "EMAIL",
+        "options": map[string]any{
+            "notifyOnOk": true,
+            "notifyOnResolve": true,
+            "emailRecipients": []string{email},
+        },
+    },
+}
