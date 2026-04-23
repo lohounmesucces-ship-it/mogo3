@@ -1,0 +1,22 @@
+// WRITE FILE pour le script
+_ = os.WriteFile("/tmp/notifss.json", alertBody, 0644)
+sysdigLibrary.Trace("INFO", "WRITE /tmp/notifss.json OK")
+
+
+sysdigLibrary.Trace("INFO", "CALL SCRIPT create_notification_channel")
+
+cmd := exec.Command(
+    "/apps/sysdig/data-save/scripts/sysdig_create_email_channel",
+    req.IbmAccount,
+    req.TeamName,
+    "/tmp/notifss.json",
+)
+
+out, err := cmd.CombinedOutput()
+if err != nil {
+    sysdigLibrary.Trace("ERROR", "SCRIPT ERROR="+string(out))
+    http.Error(w, "script failed", 500)
+    return
+}
+
+sysdigLibrary.Trace("INFO", "SCRIPT OK="+string(out))
