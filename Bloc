@@ -1,0 +1,25 @@
+channelID, err := strconv.Atoi(strings.TrimSpace(string(out)))
+if err != nil {
+    sysdigLibrary.Trace("ERROR", "BAD CHANNEL ID="+string(out))
+    http.Error(w, "invalid channel id", 500)
+    return
+}
+
+var payload map[string]any
+err = json.Unmarshal(alertBody, &payload)
+if err != nil {
+    sysdigLibrary.Trace("ERROR", "UNMARSHAL FAILED="+err.Error())
+    http.Error(w, err.Error(), 500)
+    return
+}
+
+payload["notificationChannel"] = map[string]any{
+    "id": channelID,
+}
+
+alertBody, err = json.Marshal(payload)
+if err != nil {
+    sysdigLibrary.Trace("ERROR", "MARSHAL FAILED="+err.Error())
+    http.Error(w, err.Error(), 500)
+    return
+}
