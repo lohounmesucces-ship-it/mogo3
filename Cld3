@@ -1,0 +1,12 @@
+// 1. Remplacer l'ID du channel principal
+payload["notificationChannelIds"] = []int{channelID}
+delete(payload, "notificationChannel")
+
+// 2. Mettre à jour le channelId dans defaultSettings
+if ds, ok := payload["defaultSettings"].([]any); ok {
+    for _, d := range ds {
+        if dm, ok := d.(map[string]any); ok {
+            dm["notificationChannelId"] = channelID
+        }
+    }
+}
