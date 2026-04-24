@@ -1,0 +1,20 @@
+if _, hasErrors := resp["errors"]; hasErrors {
+    // Channel existe déjà → récupérer son ID via l'API
+    ch, err := h.sysdig.FindNotificationChannelByName(
+        ctx,
+        tok.IbmInstanceID,
+        teamID,
+        tok.IamToken,
+        channelName,
+    )
+    if err != nil || ch == nil {
+        sysdigLibrary.Trace("ERROR", "channel not found")
+        http.Error(w, "channel not found", 500)
+        return
+    }
+    channelID = int(ch["id"].(float64))
+} else {
+    // Channel créé → récupérer l'ID depuis la réponse du script
+    channel := resp["notificationChannel"].(map[string]any)
+    channelID = int(channel["id"].(float64))
+}
