@@ -1,0 +1,15 @@
+var channelID int
+
+if req.TeamName == "Monitor-Operations" {
+    // Récupérer le channel "Alert to NOI PRD" existant
+    ch, err := h.sysdig.FindNotificationChannelByName(
+        ctx, tok.IbmInstanceID, teamID, tok.IamToken, "Alert to NOI PRD",
+    )
+    if err != nil || ch == nil {
+        sysdigLibrary.Trace("ERROR", "Alert to NOI PRD not found")
+        http.Error(w, "Alert to NOI PRD not found", 500)
+        return
+    }
+    channelID = int(ch["id"].(float64))
+
+} else {
