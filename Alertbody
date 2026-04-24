@@ -1,0 +1,6 @@
+alertBody, err = sysdig.InjectNotificationChannelIDs(alertBody, []int{channelID})
+if err != nil {
+    sysdigLibrary.Trace("ERROR", err.Error())
+    http.Error(w, err.Error(), 500)
+    return
+}
