@@ -1,0 +1,14 @@
+// Créer le JSON du channel séparément
+channelJSON, _ := json.Marshal(map[string]any{
+    "notificationChannel": map[string]any{
+        "name": channelName,
+        "type": "EMAIL",
+        "teamId": "##TEAMID##",
+        "options": map[string]any{
+            "emailRecipients": []string{email},
+            "notifyOnOk":      true,
+            "notifyOnResolve": true,
+        },
+    },
+})
+os.WriteFile("/tmp/notifss.json", channelJSON, 0644)
