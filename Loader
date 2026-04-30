@@ -1,0 +1,14 @@
+defs, err := cat.LoadAlertDefs(app)
+if err != nil {
+    msg := err.Error()
+    if strings.Contains(msg, "read alerts.csv") {
+        appDir := filepath.Join(h.templatesBaseDir, app)
+        if _, statErr := os.Stat(appDir); os.IsNotExist(statErr) {
+            msg = "application not found: " + app
+        } else {
+            msg = "alerts catalog not found for application: " + app
+        }
+    }
+    http.Error(w, msg, http.StatusBadRequest)
+    return
+}
