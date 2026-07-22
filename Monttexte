@@ -1,0 +1,16 @@
+To answer your questions:
+
+	•	We only have two environments: QUAL and PROD (no separate DEV).
+	•	QUAL has the same DNS restriction as PROD — no direct public DNS resolution either. Both environments only reach Sysdig through the internal VIP.
+	•	Both are VSIs provisioned in our VPC.
+
+Hostnames:
+
+	•	PROD: [hostname PROD]
+	•	QUAL: [hostname QUAL]
+
+Given that QUAL has the exact same network restrictions (no public DNS, same VIP) but does not experience the issue, this seems to point away from a pure network/DNS configuration difference and possibly towards something related to traffic volume/concurrency on the VIP-to-Sysdig connection specifically from PROD (which receives significantly more request volume than QUAL, including a recurring automated polling every few seconds).
+
+Could your team check the VIP connection logs for any pattern related to concurrent connections or rate limiting around the timestamps of our failed requests?
+
+Thanks and regards,
