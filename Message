@@ -1,0 +1,15 @@
+Hi,
+
+We tested both URLs you provided directly from our PROD server:
+curl -k -X POST https://eu-fr2.monitoring.cloud.ibm.com/api/alerts -H "Content-Type: application/json" -d '{}'
+curl -k -X POST https://private.eu-fr2.monitoring.cloud.ibm.com/api/alerts -H "Content-Type: application/json" -d '{}'
+
+Result: curl: (6) Could not resolve host for both URLs.
+
+Our PROD server has no DNS resolution towards these public IBM domains. All communication to Sysdig goes exclusively through the internal BNPP VIP monitor-admin-global.svc.paas.echonet:4219, which is the only network route authorized from this environment due to internal BNPP network policy. We are therefore unable to perform the requested comparison test from this server.
+
+Regarding your question on our infrastructure: our PROD environment runs on a VM (VSI), no Kubernetes/IKS on our side for this API.
+
+Given that the only reachable path is the internal VIP, this points towards a possible issue on the VIP itself or the underlying network route to Sysdig. Could you check the stability of the connection between this VIP and your Sysdig services? Alternatively, should we involve the BNPP network team who manages this VIP?
+
+Thanks and regards,
