@@ -1,0 +1,23 @@
+Bonjour,
+
+Nous rencontrons un problème intermittent sur notre API interne (sysdig-alerts-api, hébergée sur cloud-monitoring-prod.group.echonet) qui passe par le VIP monitor-admin-global.svc.paas.echonet:4219 pour communiquer avec Sysdig/IBM.
+
+Symptôme : environ 1 appel sur 3 (POST pour créer une alerte) échoue avec une erreur 502 Bad Gateway. Un comportement similaire est observé sur les appels DELETE (retour 500 alors que l’action réussit côté Sysdig).
+
+Diagnostic effectué de notre côté et confirmé par IBM Support :
+
+	•	Le code applicatif est strictement identique entre notre environnement QUAL (sans problème) et PROD (avec le problème)
+	•	À chaque reproduction du 502, aucune trace de la requête dans nos logs Apache locaux, même en surveillance temps réel (tail -f) au moment exact de l’échec — la requête n’atteint jamais notre serveur applicatif
+	•	Le header cache-control: private,no-cache,no-store présent sur la réponse 502 est caractéristique d’une erreur générée localement par un proxy/reverse-proxy, pas relayée depuis un service upstream
+	•	IBM Cloud Support confirme ne pas avoir de visibilité sur l’infrastructure *.echonet/*.group.echonet, qui est entièrement interne BNPP
+
+Conclusion d’IBM : le problème se situe très probablement au niveau du VIP ou reverse proxy (F5/NGINX) qui fronte cloud-monitoring-prod.group.echonet.
+
+Ce qu’on aimerait que vous vérifiiez :
+
+	1.	Le VIP/load balancer devant cloud-monitoring-prod.group.echonet — est-ce qu’il atteint une limite de connexions concurrentes sous le volume de polling de PROD ?
+	2.	Est-ce que monitor-admin-global.svc.paas.echonet:4219 est bien configuré comme backend sur ce VIP, et quels sont les paramètres de health check / pool de connexions configurés ?
+
+Nous restons disponibles pour fournir tout détail technique complémentaire (horodatages précis, logs, etc.).
+
+Merci d’avance,
