@@ -1,0 +1,26 @@
+
+
+Apologies for the confusion earlier — the DELETE URL was a copy-paste mistake on my end. It should read cloud-monitoring-prod.group.echonet, not staging. Both POST and DELETE go through the same PROD wrapper.
+
+To answer your questions:
+
+1) Polling frequency: The automated polling runs approximately every 5–10 seconds, calling GET /sysdig-alerts/v1/alerts/list — a different endpoint than the one used for POST/DELETE.
+
+2) Concurrency profile: We’ve observed multiple distinct source IPs polling in parallel (not a single sequential poller), so calls can overlap with our POST/DELETE alert requests.
+
+3) Response headers on 502: No x-ratelimit-limit, x-ratelimit-remaining, or retry-after header is present. The full response is:
+
+cache-control: private,no-cache,no-store,max-age=0,no-transform
+content-length: 106
+content-type: application/json
+
+{
+  "title": "Bad Gateway",
+  "detail": ""
+}
+
+4) Volume numbers: We don’t have an exact call/minute figure available right now, but we can confirm the following key finding: each time we reproduce the 502, we find zero trace of the request in our Apache access/error logs — even with a live tail -f running at the exact moment of the failure. This means the request never reaches our backend server. This strongly suggests the issue sits between your gateway/wrapper and our server — likely at the internal VIP (monitor-admin-global.svc.paas.echonet) or the network path to it, rather than on our application side.
+
+Given this, would it be possible to check the VIP’s connection/health status from your side around the failure timestamps, or should we loop in the internal BNPP team managing this VIP jointly with you?
+
+Thanks and regards,
