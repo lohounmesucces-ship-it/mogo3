@@ -1,0 +1,19 @@
+Nous rencontrons un problème intermittent sur notre API interne (sysdig-alerts-api) qui passe par le VIP monitor-admin-global.svc.paas.echonet:4219 pour communiquer avec Sysdig/IBM.
+
+Symptôme : environ 1 appel sur 3 (POST pour créer une alerte) échoue avec une erreur 502 Bad Gateway, renvoyée par notre gateway API interne (itgp.api.group.echonet). Un comportement similaire est observé sur les appels DELETE (retour 500 alors que l’action réussit côté Sysdig).
+
+Ce qu’on a déjà vérifié de notre côté :
+
+	•	Le code applicatif est strictement identique entre notre environnement QUAL (qui ne présente pas ce problème) et PROD (qui le présente)
+	•	Aucune saturation mémoire ni ressource sur notre serveur PROD
+	•	Point clé : à chaque reproduction du 502, nous ne trouvons aucune trace de la requête dans nos logs Apache locaux (access_log/ssl_access_log), même en surveillant en temps réel (tail -f) au moment exact de l’échec. Cela indique que la requête n’atteint jamais notre serveur applicatif.
+	•	Un ticket est également ouvert côté IBM Support, qui nous oriente vers une possible investigation du VIP
+
+Ce qu’on aimerait que vous vérifiiez :
+
+	•	L’état de santé / la stabilité de la connexion sur le VIP monitor-admin-global.svc.paas.echonet:4219 autour des horodatages d’échec
+	•	S’il existe une limite de connexions concurrentes ou un comportement de type rate-limiting sur ce VIP qui pourrait expliquer des échecs intermittents sous charge (notre PROD reçoit un trafic constant de polling automatique en plus de nos appels applicatifs)
+
+Nous restons disponibles pour fournir des horodatages précis ou tout autre détail technique utile.
+
+Merci d’avance,
