@@ -1,0 +1,11 @@
+
+
+This affects sysdig-alerts-api in PROD, used to create/delete Sysdig monitoring alerts automatically. When the NFS hiccup occurs, our applications receives intermittent authentication failures (401) or, previously, a full request failure (502 Bad Gateway) when trying to create or delete alerts.
+
+Concretely:
+
+	•	Alert creation/deletion is unreliable — it currently takes 1 to 2 retries for a request to succeed
+	•	This is a monitoring/alerting API, so failures here directly reduce our ability to reliably configure infrastructure monitoring in PROD, which could delay incident detection if an alert fails to be created
+	•	The issue is intermittent but recurring (multiple times per day based on NFS error logs), affecting day-to-day operations of our monitoring team
+
+We’ve already applied a code-level mitigation (better error handling on our side) to avoid silent failures, but the underlying NFS instability remains and continues to cause user-facing errors.
