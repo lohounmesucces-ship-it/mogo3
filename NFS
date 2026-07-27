@@ -1,0 +1,25 @@
+Bonjour,
+
+Nous constatons des erreurs NFSv4 récurrentes sur l’un de nos serveurs de production, qui semblent impacter la fiabilité de notre application.
+
+Montage concerné :
+s00vf9960381.fr.net.intra:/vol_SVM_ZST_ZSI_TECH_PROD_001/a01nn9365642_qtree on /apps/sysdig/data-save
+type nfs4 (rw,relatime,vers=4.2,rsize=65536,wsize=65536,namlen=255,hard,fatal_neterrors=none,proto=tcp,timeo=600,retrans=2,sec=sys,clientaddr=10.244.228.221,local_lock=none,addr=10.244.228.57)
+
+Erreur observée (via dmesg), qui se répète environ une à plusieurs fois par jour depuis au moins 3 semaines :
+
+NFSv4: state recovery failed for open file cgi-bin/account_status.csv, error = -116
+
+
+
+Impact applicatif : notre application lit des fichiers de configuration/token sur ce montage à chaque requête. Quand ce hoquet NFS survient au moment précis d’une lecture, la lecture échoue ou retourne des données incomplètes, ce qui se traduit côté utilisateur par des erreurs intermittentes (401 Unauthorized, parfois 502 Bad Gateway côté gateway applicatif).
+
+Ce qu’on aimerait que vous vérifiiez :
+
+	•	La stabilité du serveur NFS s00vf9960381.fr.net.intra (redémarrages, failover, charge)
+	•	Si des événements de maintenance ou d’instabilité sont documentés sur ce volume (vol_SVM_ZST_ZSI_TECH_PROD_001) sur la période
+	•	Si un ajustement des paramètres de montage (timeout, retransmissions) pourrait réduire la fréquence de ce type d’erreur en attendant une résolution définitive
+
+Nous restons disponibles pour fournir plus de détails ou un accès aux logs complets si besoin.
+
+Merci d’avance,
