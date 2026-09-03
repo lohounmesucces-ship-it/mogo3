@@ -1,0 +1,67 @@
+// Stop an active maintenance from NOI via the REST API
+func patchMaintenanceOnNOI(mwid string) (int, string, error) {
+
+    baseURL := sysdigLibrary.ReadEnv(sysdigLibrary.BASEDIR, "NOI_API_URL")
+    path := sysdigLibrary.ReadEnv(sysdigLibrary.BASEDIR, "NOI_API_MAINTENANCE_PATH")
+
+    url := baseURL + path + "?mwid=" + mwid
+
+    tokenCmd := exec.Command(sysdigLibrary.BASEDIR+"/netcool_get_oauth2_token", "-m")
+    out, err := tokenCmd.CombinedOutput()
+    if err != nil {
+        return 0, "", err
+    }
+    token := strings.TrimSpace(string(out))
+
+    req, err := http.NewRequest("PATCH", url, nil)
+    if err != nil {
+        return 0, "", err
+    }
+
+    req.Header.Set("Authorization", "Bearer "+token)
+
+    client := &http.Client{Timeout: 30 * time.Second}
+
+    resp, err := client.Do(req)
+    if err != nil {
+        return 0, "", err
+    }
+    defer resp.Body.Close()
+
+    b, _ := ioutil.ReadAll(resp.Body)
+
+    sysdigLibrary.Trace("INFO", "NOI PATCH URL="+url)
+    sysdigLibrary.Trace("INFO", "NOI PATCH STATUS="+strconv.Itoa(resp.StatusCode))
+    sysdigLibrary.Trace("INFO", "NOI PATCH RESPONSE="+string(b))
+
+    if resp.StatusCode != 200 && resp.StatusCode != 204 {
+        return resp.StatusCode, string(b), errors.New("NOI API patch failed")
+    }
+
+    return resp.StatusCode, string(b), nil
+}
+
+
+
+// Determine if the maintenance is active or future
+var startDate time.Time
+err = db.QueryRow("SELECT start_date FROM " + dbschema + ".downtime WHERE ID = " + critID + ";").Scan(&startDate)
+if err != nil {
+    sysdigLibrary.Trace("ERROR", "Can't retrieve start_date: "+err.Error())
+    fmt.Fprintln(w, "<h2><center>Can't retrieve maintenance start date: "+err.Error()+"</center></h2></html>")
+    return
+}
+
+// Send the stop/delete to NOI via REST API (PATCH if active, DELETE if future)
+var status int
+var response string
+if startDate.Before(time.Now()) {
+    status, response, err = patchMaintenanceOnNOI(critID)
+} else {
+    status, response, err = deleteMaintenanceFromNOI(critID)
+}
+if err != nil {
+    sysdigLibrary.Trace("ERROR", "Can't stop/delete maintenance on NOI: "+err.Error()+" status="+strconv.Itoa(status)+" response="+response)
+    fmt.Fprintln(w, "<h2><center>Can't stop/delete maintenance on NOI: "+response+"</center></h2></html>")
+    return
+}
