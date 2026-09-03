@@ -1,0 +1,1 @@
+sysdigLibrary.Trace("INFO", "DEBUG critID="+critID+" startDate="+startDate.String()+" now="+time.Now().String()+" isBefore="+strconv.FormatBool(startDate.Before(time.Now())))
